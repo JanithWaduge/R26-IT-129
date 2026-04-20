@@ -1,0 +1,22 @@
+# Virtual Environment
+slsl_env/
+
+# Large Model Files
+*.h5
+*.tflite
+*.keras
+
+# Dataset Files (large)
+*.csv
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+
+# VS Code
+.vscode/
+
+# OS Files
+.DS_Store
+Thumbs.db
