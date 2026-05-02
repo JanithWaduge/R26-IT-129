@@ -7,6 +7,13 @@ import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 import '../constants.dart';
 
+// ── Detection mode enum ───────────────────────
+enum DetectionMode {
+  modelB,      // WITH noise filter (proposed) — default
+  modelA,      // WITHOUT noise filter (baseline)
+  comparison,  // Both side by side (examiner demo)
+}
+
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
 
@@ -27,12 +34,16 @@ class _CameraScreenState extends State<CameraScreen>
   bool _isProcessing = false;
   bool _serverOnline = false;
 
-  // ── Raw frame buffer (Uint8List JPEGs) ───────
+  // ── Detection mode ───────────────────────────
+  DetectionMode _mode = DetectionMode.modelB;
+
+  // ── Raw frame buffer ─────────────────────────
   final List<Uint8List> _rawFrames = [];
   Timer? _captureTimer;
 
   // ── Results ──────────────────────────────────
-  DetectionResult? _lastResult;
+  DetectionResult? _lastResult;        // single mode result
+  ComparisonResult? _comparisonResult; // comparison mode result
   String _statusText      = 'Connecting to server...';
   double _captureProgress = 0.0;
 
@@ -67,12 +78,10 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
-  void _setServerOffline() {
-    setState(() {
-      _serverOnline = false;
-      _statusText   = 'Server offline ❌ — PC එකේ server start කරන්න';
-    });
-  }
+  void _setServerOffline() => setState(() {
+        _serverOnline = false;
+        _statusText   = 'Server offline ❌ — PC server start කරන්න';
+      });
 
   // ── Camera init ──────────────────────────────
   Future<void> _initCamera() async {
@@ -93,19 +102,15 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
-  CameraDescription _getCamera(bool front) {
-    return _cameras.firstWhere(
-      (c) => c.lensDirection ==
-          (front ? CameraLensDirection.front : CameraLensDirection.back),
-      orElse: () => _cameras.first,
-    );
-  }
+  CameraDescription _getCamera(bool front) => _cameras.firstWhere(
+        (c) => c.lensDirection ==
+            (front ? CameraLensDirection.front : CameraLensDirection.back),
+        orElse: () => _cameras.first,
+      );
 
   Future<void> _setupCamera(CameraDescription camDesc) async {
-    if (_cameraController != null) {
-      await _cameraController!.dispose();
-      _cameraController = null;
-    }
+    await _cameraController?.dispose();
+    _cameraController = null;
     setState(() => _isCameraReady = false);
 
     _cameraController = CameraController(
@@ -129,7 +134,6 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
-  // ── Switch camera ────────────────────────────
   Future<void> _switchCamera() async {
     if (_cameras.length < 2 || _isCapturing) return;
     _captureTimer?.cancel();
@@ -139,60 +143,54 @@ class _CameraScreenState extends State<CameraScreen>
       _rawFrames.clear();
       _captureProgress = 0.0;
       _lastResult      = null;
+      _comparisonResult = null;
       _isFrontCamera   = !_isFrontCamera;
     });
     await _setupCamera(_getCamera(_isFrontCamera));
   }
 
   // ════════════════════════════════════════════
-  // STEP 1 — Capture 30 raw JPEG frames locally
-  // 100ms × 30 = 3 seconds, no network calls
+  // STEP 1 — Capture 30 raw JPEG frames (3 sec)
   // ════════════════════════════════════════════
   void _startCapture() {
     if (_isCapturing || !_isCameraReady || !_serverOnline) return;
 
     setState(() {
-      _isCapturing     = true;
+      _isCapturing      = true;
       _rawFrames.clear();
-      _captureProgress = 0.0;
-      _lastResult      = null;
-      _statusText      = '🖐 Sign එක 3 seconds hold කරන්න...';
+      _captureProgress  = 0.0;
+      _lastResult       = null;
+      _comparisonResult = null;
+      _statusText       = '🖐 Sign එක 3 seconds hold කරන්න...';
     });
 
     _captureTimer = Timer.periodic(
-      const Duration(milliseconds: 100), // 30 frames in 3 seconds
+      const Duration(milliseconds: 100),
       (timer) async {
         if (_rawFrames.length >= kSequenceLength) {
           timer.cancel();
-          await _processFrames(); // network calls AFTER capture
+          await _processFrames();
           return;
         }
         await _captureRawFrame();
         if (mounted) {
-          setState(() {
-            _captureProgress = _rawFrames.length / kSequenceLength;
-          });
+          setState(() => _captureProgress = _rawFrames.length / kSequenceLength);
         }
       },
     );
   }
 
-  // Capture one JPEG frame and store in memory
   Future<void> _captureRawFrame() async {
-    if (_cameraController == null ||
-        !_cameraController!.value.isInitialized) return;
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
     try {
-      final XFile xfile  = await _cameraController!.takePicture();
+      final XFile xfile     = await _cameraController!.takePicture();
       final Uint8List bytes = await xfile.readAsBytes();
       _rawFrames.add(bytes);
-    } catch (_) {
-      // Skip failed frames
-    }
+    } catch (_) {}
   }
 
   // ════════════════════════════════════════════
-  // STEP 2 — Send each frame to server for
-  //           keypoint extraction (sequentially)
+  // STEP 2 — Extract keypoints from each frame
   // ════════════════════════════════════════════
   Future<void> _processFrames() async {
     if (!mounted) return;
@@ -206,21 +204,17 @@ class _CameraScreenState extends State<CameraScreen>
 
     for (int i = 0; i < _rawFrames.length; i++) {
       if (!mounted) return;
-
-      // Update progress UI
       setState(() {
-        _statusText = 'Processing frame ${i + 1}/${_rawFrames.length}...';
+        _statusText      = 'Processing frame ${i + 1}/${_rawFrames.length}...';
         _captureProgress = i / _rawFrames.length;
       });
 
       try {
-        final String b64 = base64Encode(_rawFrames[i]);
-
         final res = await http
             .post(
               Uri.parse('$kServerUrl/predict_frame'),
               headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'image': b64, 'frame_id': i}),
+              body: jsonEncode({'image': base64Encode(_rawFrames[i]), 'frame_id': i}),
             )
             .timeout(const Duration(seconds: 5));
 
@@ -238,24 +232,31 @@ class _CameraScreenState extends State<CameraScreen>
       }
     }
 
-    // ── STEP 3: Run final prediction ──────────
     await _runPrediction(frameBuffer, handDetectedCount);
   }
 
   // ════════════════════════════════════════════
-  // STEP 3 — Send full sequence for prediction
+  // STEP 3 — Run prediction (single or comparison)
   // ════════════════════════════════════════════
   Future<void> _runPrediction(
     List<List<double>> frameBuffer,
     int handDetectedCount,
   ) async {
     if (!mounted) return;
+
+    // Build filter query param based on mode
+    final filterParam = _mode == DetectionMode.modelB
+        ? 'true'
+        : _mode == DetectionMode.modelA
+            ? 'false'
+            : 'both';
+
     setState(() => _statusText = 'Analyzing sign... 🔍');
 
     try {
       final res = await http
           .post(
-            Uri.parse('$kServerUrl/predict_sequence'),
+            Uri.parse('$kServerUrl/predict_sequence?filter=$filterParam'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'frames': frameBuffer}),
           )
@@ -264,32 +265,31 @@ class _CameraScreenState extends State<CameraScreen>
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
 
-        final top3 = (data['top3'] as List).map((e) {
-          return Top3Item(
-            label     : e['label'],
-            sinhala   : e['sinhala'],
-            confidence: e['confidence'].toDouble(),
-          );
-        }).toList();
+        if (_mode == DetectionMode.comparison) {
+          // Comparison mode — parse both model results
+          final a = data['model_a'];
+          final b = data['model_b'];
 
-        if (mounted) {
           setState(() {
-            _lastResult = DetectionResult(
-              label      : data['label'],
-              sinhala    : data['sinhala'],
-              confidence : data['confidence'].toDouble(),
-              top3       : top3,
-              handFrames : handDetectedCount,
-              totalFrames: kSequenceLength,
+            _comparisonResult = ComparisonResult(
+              validFrames: data['valid_frames'] ?? handDetectedCount,
+              modelA: _parseResult(a, handDetectedCount),
+              modelB: _parseResult(b, handDetectedCount),
             );
+            _statusText = 'Comparison complete! 🎓';
+          });
+        } else {
+          // Single mode
+          setState(() {
+            _lastResult = _parseResult(data, handDetectedCount);
             _statusText = 'Sign detected! 🎉';
           });
         }
       } else {
-        if (mounted) setState(() => _statusText = 'Server error — try again');
+        setState(() => _statusText = 'Server error — try again');
       }
-    } catch (e) {
-      if (mounted) setState(() => _statusText = 'Connection error — try again');
+    } catch (_) {
+      setState(() => _statusText = 'Connection error — try again');
     } finally {
       if (mounted) {
         setState(() {
@@ -302,15 +302,34 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
+  DetectionResult _parseResult(Map<String, dynamic> data, int handFrames) {
+    final top3 = (data['top3'] as List? ?? []).map((e) => Top3Item(
+          label     : e['label'],
+          sinhala   : e['sinhala'],
+          confidence: (e['confidence'] as num).toDouble(),
+        )).toList();
+
+    return DetectionResult(
+      label      : data['label'] ?? 'Unknown',
+      sinhala    : data['sinhala'] ?? '',
+      confidence : (data['confidence'] as num? ?? 0.0).toDouble(),
+      top3       : top3,
+      handFrames : handFrames,
+      totalFrames: kSequenceLength,
+      filtered   : data['filtered'] ?? false,
+    );
+  }
+
   void _reset() {
     _captureTimer?.cancel();
     setState(() {
-      _isCapturing     = false;
-      _isProcessing    = false;
+      _isCapturing      = false;
+      _isProcessing     = false;
       _rawFrames.clear();
-      _captureProgress = 0.0;
-      _lastResult      = null;
-      _statusText      = _serverOnline
+      _captureProgress  = 0.0;
+      _lastResult       = null;
+      _comparisonResult = null;
+      _statusText       = _serverOnline
           ? 'Ready — Capture button press කරන්න'
           : 'Server offline — PC server start කරන්න';
     });
@@ -341,7 +360,6 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  // ── Camera preview ───────────────────────────
   Widget _buildCameraPreview() {
     if (!_isCameraReady || _cameraController == null) {
       return Container(
@@ -354,11 +372,9 @@ class _CameraScreenState extends State<CameraScreen>
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Text(
-                  _statusText,
-                  style: const TextStyle(color: Colors.white70),
-                  textAlign: TextAlign.center,
-                ),
+                child: Text(_statusText,
+                    style: const TextStyle(color: Colors.white70),
+                    textAlign: TextAlign.center),
               ),
             ],
           ),
@@ -377,7 +393,6 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  // ── Top bar ──────────────────────────────────
   Widget _buildTopBar(BuildContext context) {
     return Positioned(
       top: 0, left: 0, right: 0,
@@ -397,24 +412,16 @@ class _CameraScreenState extends State<CameraScreen>
               onPressed: () => Navigator.pop(context),
             ),
             const Expanded(
-              child: Text(
-                'SLSL Detection',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color     : Colors.white,
-                  fontSize  : 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              child: Text('SLSL Detection',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold)),
             ),
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Icon(
-                Icons.circle,
-                size : 10,
-                color: _serverOnline ? kSuccess : kError,
-              ),
-            ),
+            Icon(Icons.circle,
+                size: 10, color: _serverOnline ? kSuccess : kError),
+            const SizedBox(width: 4),
             IconButton(
               icon     : const Icon(Icons.flip_camera_android_rounded,
                   color: Colors.white),
@@ -426,7 +433,6 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  // ── Front/Back toggle pill ───────────────────
   Widget _buildCameraToggle() {
     return Positioned(
       top: 68, left: 0, right: 0,
@@ -447,13 +453,11 @@ class _CameraScreenState extends State<CameraScreen>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _camOption(Icons.camera_rear_rounded,
-                    'Back', !_isFrontCamera, kPrimary),
+                _camOption(Icons.camera_rear_rounded, 'Back', !_isFrontCamera, kPrimary),
                 const SizedBox(width: 8),
                 Container(width: 1, height: 18, color: Colors.white24),
                 const SizedBox(width: 8),
-                _camOption(Icons.camera_front_rounded,
-                    'Front', _isFrontCamera, kAccent),
+                _camOption(Icons.camera_front_rounded, 'Front', _isFrontCamera, kAccent),
               ],
             ),
           ),
@@ -482,7 +486,67 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  // ── Capture overlay (during 3s recording) ───
+  // ── Mode selector (Research toggle) ─────────
+  Widget _buildModeSelector() {
+    return Container(
+      margin      : const EdgeInsets.only(bottom: 12),
+      padding     : const EdgeInsets.all(4),
+      decoration  : BoxDecoration(
+        color       : Colors.black54,
+        borderRadius: BorderRadius.circular(12),
+        border      : Border.all(color: Colors.white12),
+      ),
+      child: Row(
+        children: [
+          _modeBtn(DetectionMode.modelB,     '🟢 Model B', 'With Filter',    kSuccess),
+          _modeBtn(DetectionMode.modelA,     '🔴 Model A', 'No Filter',      kError),
+          _modeBtn(DetectionMode.comparison, '⚖️ Compare', 'A vs B',         kWarning),
+        ],
+      ),
+    );
+  }
+
+  Widget _modeBtn(DetectionMode mode, String title, String sub, Color color) {
+    final active = _mode == mode;
+    return Expanded(
+      child: GestureDetector(
+        onTap: _isCapturing ? null : () => setState(() {
+          _mode             = mode;
+          _lastResult       = null;
+          _comparisonResult = null;
+        }),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding : const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color       : active ? color.withOpacity(0.25) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border      : active
+                ? Border.all(color: color.withOpacity(0.6))
+                : null,
+          ),
+          child: Column(
+            children: [
+              Text(title,
+                  style: TextStyle(
+                    color    : active ? color : Colors.white54,
+                    fontSize : 11,
+                    fontWeight: active ? FontWeight.bold : FontWeight.normal,
+                  ),
+                  textAlign: TextAlign.center),
+              Text(sub,
+                  style: TextStyle(
+                    color  : active ? color.withOpacity(0.8) : Colors.white30,
+                    fontSize: 9,
+                  ),
+                  textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildCaptureOverlay() {
     return Positioned.fill(
       child: Container(
@@ -503,57 +567,40 @@ class _CameraScreenState extends State<CameraScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.back_hand_outlined,
-                      color: kPrimary, size: 44),
+                  const Icon(Icons.back_hand_outlined, color: kPrimary, size: 44),
                   const SizedBox(height: 8),
                   Text(
                     '${(_captureProgress * 100).toInt()}%',
                     style: const TextStyle(
-                      color     : kPrimary,
-                      fontSize  : 30,
-                      fontWeight: FontWeight.bold,
-                    ),
+                        color: kPrimary, fontSize: 30, fontWeight: FontWeight.bold),
                   ),
-                  Text(
-                    '${_rawFrames.length}/$kSequenceLength frames',
-                    style: const TextStyle(
-                      color  : Colors.white70,
-                      fontSize: 13,
-                    ),
-                  ),
+                  Text('${_rawFrames.length}/$kSequenceLength frames',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13)),
                 ],
               ),
             ),
             const SizedBox(height: 12),
-            const Text(
-              'Sign steady hold කරන්න 🖐',
-              style: TextStyle(color: Colors.white, fontSize: 15),
-            ),
+            const Text('Sign steady hold කරන්න 🖐',
+                style: TextStyle(color: Colors.white, fontSize: 15)),
           ],
         ),
       ),
     );
   }
 
-  // ── Processing overlay (after capture) ──────
   Widget _buildProcessingOverlay() {
     return Positioned.fill(
       child: Container(
-        color: Colors.black.withOpacity(0.7),
+        color: Colors.black.withOpacity(0.75),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const CircularProgressIndicator(color: kPrimary, strokeWidth: 3),
             const SizedBox(height: 20),
-            Text(
-              _statusText,
-              style: const TextStyle(
-                color    : Colors.white,
-                fontSize : 16,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
+            Text(_statusText,
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+                textAlign: TextAlign.center),
             const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 48),
@@ -573,35 +620,37 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  // ── Bottom panel ─────────────────────────────
   Widget _buildBottomPanel() {
     return Container(
       width  : double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 36),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 36),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin : Alignment.bottomCenter,
           end   : Alignment.topCenter,
-          colors: [
-            Colors.black,
-            Colors.black.withOpacity(0.85),
-            Colors.transparent,
-          ],
-          stops: const [0.0, 0.55, 1.0],
+          colors: [Colors.black, Colors.black.withOpacity(0.85), Colors.transparent],
+          stops : const [0.0, 0.55, 1.0],
         ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_lastResult != null) _buildResultCard(),
-          if (_lastResult != null) const SizedBox(height: 10),
+          // Mode selector
+          if (!_isCapturing && !_isProcessing) _buildModeSelector(),
+
+          // Results
+          if (_mode == DetectionMode.comparison && _comparisonResult != null)
+            _buildComparisonCard()
+          else if (_lastResult != null)
+            _buildResultCard(_lastResult!),
+
+          if (_lastResult != null || _comparisonResult != null)
+            const SizedBox(height: 10),
 
           if (!_isProcessing)
-            Text(
-              _statusText,
-              style: const TextStyle(color: Colors.white70, fontSize: 13),
-              textAlign: TextAlign.center,
-            ),
+            Text(_statusText,
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+                textAlign: TextAlign.center),
           const SizedBox(height: 10),
 
           if (_isCapturing && !_isProcessing)
@@ -620,7 +669,7 @@ class _CameraScreenState extends State<CameraScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (_lastResult != null || _isCapturing)
+              if (_lastResult != null || _comparisonResult != null || _isCapturing)
                 Padding(
                   padding: const EdgeInsets.only(right: 24),
                   child: _circleBtn(
@@ -631,7 +680,6 @@ class _CameraScreenState extends State<CameraScreen>
                   ),
                 ),
 
-              // Main capture button
               GestureDetector(
                 onTap: (_isCapturing || _isProcessing || !_serverOnline)
                     ? null
@@ -647,12 +695,15 @@ class _CameraScreenState extends State<CameraScreen>
                             ? kError.withOpacity(0.8)
                             : !_serverOnline
                                 ? Colors.grey
-                                : kPrimary,
-                    border: Border.all(color: Colors.white, width: 3),
+                                : _mode == DetectionMode.comparison
+                                    ? kWarning
+                                    : _mode == DetectionMode.modelA
+                                        ? kError
+                                        : kPrimary,
+                    border   : Border.all(color: Colors.white, width: 3),
                     boxShadow: [
                       BoxShadow(
-                        color    : (_isCapturing ? kError : kPrimary)
-                            .withOpacity(0.5),
+                        color    : (_isCapturing ? kError : kPrimary).withOpacity(0.5),
                         blurRadius: 20,
                       ),
                     ],
@@ -686,25 +737,16 @@ class _CameraScreenState extends State<CameraScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                _isFrontCamera ? '📷 Front' : '📸 Back',
-                style: TextStyle(
-                  color   : _isFrontCamera ? kAccent : kPrimary,
-                  fontSize: 11,
-                ),
-              ),
+              Text(_isFrontCamera ? '📷 Front' : '📸 Back',
+                  style: TextStyle(
+                      color: _isFrontCamera ? kAccent : kPrimary, fontSize: 11)),
               const SizedBox(width: 12),
               Icon(Icons.circle,
-                  size : 8,
-                  color: _serverOnline ? kSuccess : kError),
+                  size: 8, color: _serverOnline ? kSuccess : kError),
               const SizedBox(width: 4),
-              Text(
-                _serverOnline ? 'Server online' : 'Server offline',
-                style: TextStyle(
-                  color   : _serverOnline ? kSuccess : kError,
-                  fontSize: 11,
-                ),
-              ),
+              Text(_serverOnline ? 'Server online' : 'Server offline',
+                  style: TextStyle(
+                      color: _serverOnline ? kSuccess : kError, fontSize: 11)),
             ],
           ),
         ],
@@ -712,18 +754,15 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  // ── Result card ──────────────────────────────
-  Widget _buildResultCard() {
-    final r      = _lastResult!;
-    final isHigh = r.confidence >= kConfidenceThreshold;
-    final color  = isHigh ? kSuccess : kWarning;
-    final handPct = r.totalFrames > 0
-        ? r.handFrames / r.totalFrames
-        : 0.0;
+  // ── Single result card ───────────────────────
+  Widget _buildResultCard(DetectionResult r) {
+    final isHigh  = r.confidence >= kConfidenceThreshold;
+    final color   = isHigh ? kSuccess : kWarning;
+    final handPct = r.totalFrames > 0 ? r.handFrames / r.totalFrames : 0.0;
 
     return Container(
       width  : double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color       : Colors.black.withOpacity(0.88),
         borderRadius: BorderRadius.circular(16),
@@ -737,31 +776,20 @@ class _CameraScreenState extends State<CameraScreen>
               Icon(Icons.sign_language, color: color, size: 20),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  r.label,
-                  style: TextStyle(
-                    color     : color,
-                    fontSize  : 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                child: Text(r.label,
+                    style: TextStyle(
+                        color: color, fontSize: 20, fontWeight: FontWeight.bold)),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color       : color.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
                   border      : Border.all(color: color.withOpacity(0.5)),
                 ),
-                child: Text(
-                  '${(r.confidence * 100).toStringAsFixed(1)}%',
-                  style: TextStyle(
-                    color     : color,
-                    fontWeight: FontWeight.bold,
-                    fontSize  : 13,
-                  ),
-                ),
+                child: Text('${(r.confidence * 100).toStringAsFixed(1)}%',
+                    style: TextStyle(
+                        color: color, fontWeight: FontWeight.bold, fontSize: 13)),
               ),
             ],
           ),
@@ -777,20 +805,17 @@ class _CameraScreenState extends State<CameraScreen>
               children: [
                 const Text('🇱🇰 ', style: TextStyle(fontSize: 16)),
                 Expanded(
-                  child: Text(
-                    r.sinhala,
-                    style: const TextStyle(
-                      color     : Colors.white,
-                      fontSize  : 22,
-                      fontWeight: FontWeight.bold,
-                      height    : 1.3,
-                    ),
-                  ),
+                  child: Text(r.sinhala,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          height: 1.3)),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
@@ -804,27 +829,37 @@ class _CameraScreenState extends State<CameraScreen>
           Row(
             children: [
               Icon(Icons.back_hand_outlined,
-                  size : 13,
-                  color: handPct > 0.5 ? kSuccess : kWarning),
+                  size: 13, color: handPct > 0.5 ? kSuccess : kWarning),
               const SizedBox(width: 4),
-              Text(
-                'Hand detected: ${r.handFrames}/${r.totalFrames} frames',
-                style: TextStyle(
-                  color   : handPct > 0.5 ? kSuccess : kWarning,
-                  fontSize: 11,
+              Text('Hand detected: ${r.handFrames}/${r.totalFrames} frames',
+                  style: TextStyle(
+                      color: handPct > 0.5 ? kSuccess : kWarning, fontSize: 11)),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color       : (r.filtered ? kSuccess : kError).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  r.filtered ? '🟢 Filter ON' : '🔴 Filter OFF',
+                  style: TextStyle(
+                      color  : r.filtered ? kSuccess : kError,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold),
                 ),
               ),
             ],
           ),
           if (r.top3.length > 1) ...[
-            const SizedBox(height: 10),
-            const Divider(color: Colors.white12, height: 1),
             const SizedBox(height: 8),
+            const Divider(color: Colors.white12, height: 1),
+            const SizedBox(height: 6),
             const Text('Other possibilities:',
                 style: TextStyle(color: Colors.white54, fontSize: 11)),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             ...r.top3.skip(1).map((t) => Padding(
-                  padding: const EdgeInsets.only(bottom: 5),
+                  padding: const EdgeInsets.only(bottom: 4),
                   child: Row(
                     children: [
                       Expanded(
@@ -840,15 +875,141 @@ class _CameraScreenState extends State<CameraScreen>
                           ],
                         ),
                       ),
-                      Text(
-                        '${(t.confidence * 100).toStringAsFixed(1)}%',
-                        style: const TextStyle(
-                            color: Colors.white38, fontSize: 12),
-                      ),
+                      Text('${(t.confidence * 100).toStringAsFixed(1)}%',
+                          style: const TextStyle(
+                              color: Colors.white38, fontSize: 12)),
                     ],
                   ),
                 )),
           ],
+        ],
+      ),
+    );
+  }
+
+  // ── Comparison card (Examiner demo) ─────────
+  Widget _buildComparisonCard() {
+    final c = _comparisonResult!;
+    return Container(
+      width  : double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color       : Colors.black.withOpacity(0.92),
+        borderRadius: BorderRadius.circular(16),
+        border      : Border.all(color: kWarning.withOpacity(0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              const Icon(Icons.science_rounded, color: kWarning, size: 18),
+              const SizedBox(width: 8),
+              const Text('Research Comparison',
+                  style: TextStyle(
+                      color: kWarning, fontSize: 15, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              Text('${c.validFrames}/30 frames',
+                  style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Side by side
+          Row(
+            children: [
+              Expanded(child: _miniResultCard(c.modelA, 'Model A', 'Baseline\n(No Filter)', kError)),
+              const SizedBox(width: 8),
+              Expanded(child: _miniResultCard(c.modelB, 'Model B', 'Proposed\n(With Filter)', kSuccess)),
+            ],
+          ),
+
+          // Did filter help?
+          const SizedBox(height: 10),
+          _buildFilterImpact(c.modelA, c.modelB),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniResultCard(DetectionResult r, String modelName, String subtitle, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color       : color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border      : Border.all(color: color.withOpacity(0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(modelName,
+              style: TextStyle(
+                  color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+          Text(subtitle,
+              style: TextStyle(color: color.withOpacity(0.7), fontSize: 9)),
+          const SizedBox(height: 6),
+          Text(r.label,
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+          Text(r.sinhala,
+              style: const TextStyle(color: Colors.white70, fontSize: 11),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value          : r.confidence,
+              backgroundColor: Colors.white12,
+              valueColor     : AlwaysStoppedAnimation(color),
+              minHeight      : 5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text('${(r.confidence * 100).toStringAsFixed(1)}% confidence',
+              style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterImpact(DetectionResult a, DetectionResult b) {
+    final diff   = b.confidence - a.confidence;
+    final better = diff > 0;
+    final same   = a.label == b.label;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color       : (better ? kSuccess : kWarning).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border      : Border.all(
+            color: (better ? kSuccess : kWarning).withOpacity(0.4)),
+      ),
+      child: Row(
+        children: [
+          Icon(better ? Icons.trending_up : Icons.trending_flat,
+              color: better ? kSuccess : kWarning, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              same
+                  ? 'Both models agree: "${a.label}"'
+                      '\nFilter improved confidence by ${(diff * 100).abs().toStringAsFixed(1)}%'
+                  : better
+                      ? 'Filter changed result: "${a.label}" → "${b.label}"'
+                          '\nModel B confidence: ${(b.confidence * 100).toStringAsFixed(1)}%'
+                      : 'Results differ — filter may need tuning',
+              style: TextStyle(
+                  color  : better ? kSuccess : kWarning,
+                  fontSize: 11,
+                  height : 1.4),
+            ),
+          ),
         ],
       ),
     );
@@ -872,8 +1033,7 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_cameraController == null ||
-        !_cameraController!.value.isInitialized) return;
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
     if (state == AppLifecycleState.inactive) {
       _cameraController?.dispose();
     } else if (state == AppLifecycleState.resumed) {
@@ -899,6 +1059,7 @@ class DetectionResult {
   final List<Top3Item> top3;
   final int            handFrames;
   final int            totalFrames;
+  final bool           filtered;
 
   DetectionResult({
     required this.label,
@@ -907,6 +1068,19 @@ class DetectionResult {
     required this.top3,
     required this.handFrames,
     required this.totalFrames,
+    required this.filtered,
+  });
+}
+
+class ComparisonResult {
+  final int             validFrames;
+  final DetectionResult modelA;
+  final DetectionResult modelB;
+
+  ComparisonResult({
+    required this.validFrames,
+    required this.modelA,
+    required this.modelB,
   });
 }
 
@@ -914,6 +1088,7 @@ class Top3Item {
   final String label;
   final String sinhala;
   final double confidence;
+
   Top3Item({
     required this.label,
     required this.sinhala,

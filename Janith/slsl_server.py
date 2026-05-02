@@ -3,6 +3,7 @@ SLSL Flask Server
 -----------------
 PC එකේ run කරන්න — MediaPipe + TFLite inference
 Phone එකෙන් HTTP request එනවා → keypoints extract → sign predict → JSON response
+Research: filter=true/false/both parameter වලින් Model A vs Model B compare කරන්න පුළුවන්
 """
 
 from flask import Flask, request, jsonify
@@ -12,6 +13,7 @@ import mediapipe as mp
 import tensorflow as tf
 import base64
 import os
+import socket
 
 app = Flask(__name__)
 
@@ -100,30 +102,27 @@ mp_hands = mp.solutions.hands
 hands_detector = mp_hands.Hands(
     static_image_mode=True,
     max_num_hands=1,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5,
+    min_detection_confidence=0.3,
+    min_tracking_confidence=0.3,
 )
 print("✅ MediaPipe ready")
 
 # ================================================
-# NOISE FILTER (IMPROVED)
+# NOISE FILTER — Research Contribution
+# Novel velocity-threshold-based noise filtering
 # ================================================
 def apply_noise_filter(sequence, threshold=NOISE_THRESHOLD):
     """
-    Step 1: Zero frames (hand detect නොවුණ) ඉවත් කරනවා
-    Step 2: Low-velocity frames (accidental movements) ඉවත් කරනවා
+    Model B (Proposed) — WITH noise filter
+    Step 1: Zero frames ඉවත් කරනවා
+    Step 2: Low-velocity frames ඉවත් කරනවා
     Step 3: Valid frames 30 frames වලට interpolate කරනවා
     """
-    # Step 1: Zero frames ඉවත් කරන්න
-    valid_frames = [
-        f for f in sequence
-        if np.sum(np.abs(f)) > 0.01
-    ]
+    valid_frames = [f for f in sequence if np.sum(np.abs(f)) > 0.01]
 
     if len(valid_frames) == 0:
         return [[0.0] * 63] * SEQUENCE_LENGTH
 
-    # Step 2: Velocity filter (low-velocity frames ඉවත් කරන්න)
     if len(valid_frames) >= 2:
         filtered = [valid_frames[0]]
         for i in range(1, len(valid_frames)):
@@ -132,71 +131,66 @@ def apply_noise_filter(sequence, threshold=NOISE_THRESHOLD):
             ))
             if velocity > threshold:
                 filtered.append(valid_frames[i])
-        # Filter කළාට පස්සේ ඉතිරිය 3 frames වලට වඩා අඩු නම් original valid frames use කරන්න
         valid_frames = filtered if len(filtered) > 3 else valid_frames
 
-    # Step 3: 30 frames වලට interpolate කරන්න
     if len(valid_frames) >= SEQUENCE_LENGTH:
         return valid_frames[:SEQUENCE_LENGTH]
     else:
         indices = np.linspace(0, len(valid_frames) - 1, SEQUENCE_LENGTH)
         return [valid_frames[int(round(i))] for i in indices]
 
+
+def no_filter(sequence):
+    """
+    Model A (Baseline) — WITHOUT noise filter
+    Raw sequence pad/trim only
+    """
+    if len(sequence) < SEQUENCE_LENGTH:
+        padding = [[0.0] * 63] * (SEQUENCE_LENGTH - len(sequence))
+        return sequence + padding
+    return sequence[:SEQUENCE_LENGTH]
+
+
 # ================================================
 # EXTRACT KEYPOINTS FROM IMAGE
 # ================================================
 def extract_keypoints(image_bgr):
-    """
-    MediaPipe hand keypoints 63ක් extract කරනවා.
-    Returns list of 63 floats or None if no hand detected.
-    """
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
     results   = hands_detector.process(image_rgb)
-
     if not results.multi_hand_landmarks:
         return None
-
     hand_landmarks = results.multi_hand_landmarks[0]
     keypoints = []
     for lm in hand_landmarks.landmark:
         keypoints.extend([lm.x, lm.y, lm.z])
+    return keypoints
 
-    return keypoints  # 21 landmarks × 3 = 63 values
 
 # ================================================
 # RUN TFLITE INFERENCE
 # ================================================
 def run_inference(sequence):
-    """
-    TFLite model එකෙන් prediction ගන්නවා.
-    sequence: list of 30 lists, each with 63 floats
-    Returns (label, confidence, top3)
-    """
-    input_data = np.array([sequence], dtype=np.float32)  # shape: (1, 30, 63)
-
+    input_data = np.array([sequence], dtype=np.float32)
     interpreter.set_tensor(input_details[0]['index'], input_data)
     interpreter.invoke()
+    output = interpreter.get_tensor(output_details[0]['index'])[0]
 
-    output = interpreter.get_tensor(output_details[0]['index'])[0]  # shape: (num_classes,)
-
-    # Top result
     top_idx   = int(np.argmax(output))
     top_conf  = float(output[top_idx])
     top_label = SIGN_LABELS[top_idx] if top_idx < len(SIGN_LABELS) else 'Unknown'
 
-    # Top 3
     sorted_idx = np.argsort(output)[::-1][:3]
     top3 = [
         {
-            'label'      : SIGN_LABELS[i] if i < len(SIGN_LABELS) else 'Unknown',
-            'sinhala'    : SINHALA_TRANSLATIONS.get(
+            'label'     : SIGN_LABELS[i] if i < len(SIGN_LABELS) else 'Unknown',
+            'sinhala'   : SINHALA_TRANSLATIONS.get(
                 SIGN_LABELS[i] if i < len(SIGN_LABELS) else '', ''),
-            'confidence' : float(output[i]),
+            'confidence': float(output[i]),
         }
         for i in sorted_idx
     ]
-
     return top_label, top_conf, top3
+
 
 # ================================================
 # ROUTES
@@ -204,27 +198,16 @@ def run_inference(sequence):
 
 @app.route('/health', methods=['GET'])
 def health():
-    """Health check — Flutter app connect වුණාම test කරනවා"""
-    return jsonify({
-        'status': 'ok',
-        'model' : 'loaded',
-        'signs' : len(SIGN_LABELS),
-    })
+    return jsonify({'status': 'ok', 'model': 'loaded', 'signs': len(SIGN_LABELS)})
 
 
 @app.route('/predict_frame', methods=['POST'])
 def predict_frame():
-    """
-    Flutter app single frame (base64 image) send කරනවා.
-    Request : { "image": "<base64>", "frame_id": 0-29 }
-    Response: { "keypoints": [63 floats], "hand_detected": bool }
-    """
     try:
         data     = request.get_json()
         img_b64  = data.get('image', '')
         frame_id = data.get('frame_id', 0)
 
-        # Decode base64 image
         img_bytes = base64.b64decode(img_b64)
         img_arr   = np.frombuffer(img_bytes, dtype=np.uint8)
         image     = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
@@ -232,21 +215,11 @@ def predict_frame():
         if image is None:
             return jsonify({'error': 'Invalid image'}), 400
 
-        # Extract keypoints
         keypoints = extract_keypoints(image)
-
         if keypoints is None:
-            return jsonify({
-                'hand_detected': False,
-                'keypoints'    : [0.0] * 63,
-                'frame_id'     : frame_id,
-            })
+            return jsonify({'hand_detected': False, 'keypoints': [0.0] * 63, 'frame_id': frame_id})
 
-        return jsonify({
-            'hand_detected': True,
-            'keypoints'    : keypoints,
-            'frame_id'     : frame_id,
-        })
+        return jsonify({'hand_detected': True, 'keypoints': keypoints, 'frame_id': frame_id})
 
     except Exception as e:
         print(f"❌ predict_frame error: {e}")
@@ -256,50 +229,80 @@ def predict_frame():
 @app.route('/predict_sequence', methods=['POST'])
 def predict_sequence():
     """
-    Flutter app 30 frames එකවර send කරනවා.
-    Request : { "frames": [ [63 floats], ... ] }  (30 frames)
-    Response: { "label", "sinhala", "confidence", "top3", "valid_frames" }
+    ?filter=true  → Model B (WITH noise filter)    — Proposed
+    ?filter=false → Model A (WITHOUT noise filter)  — Baseline
+    ?filter=both  → දෙකම — Examiner comparison mode
     """
     try:
-        data   = request.get_json()
-        frames = data.get('frames', [])
+        data       = request.get_json()
+        frames     = data.get('frames', [])
+        use_filter = request.args.get('filter', 'true').lower()
 
         if len(frames) == 0:
             return jsonify({'error': 'No frames received'}), 400
 
-        # Valid (non-zero) frames count කරන්න
-        valid_count = sum(
-            1 for f in frames if np.sum(np.abs(f)) > 0.01
-        )
+        valid_count = sum(1 for f in frames if np.sum(np.abs(f)) > 0.01)
+        print(f"📊 frames={len(frames)} | valid={valid_count} | filter={use_filter}")
 
-        print(f"📊 Received {len(frames)} frames, {valid_count} valid (hand detected)")
-
-        # Valid frames ඉතාම අඩු නම් reject කරන්න
         if valid_count < 5:
-            return jsonify({
-                'label'       : 'No hand detected',
-                'sinhala'     : 'අත හොයාගත නොහැක — නැවත try කරන්න',
-                'confidence'  : 0.0,
-                'top3'        : [],
-                'filtered'    : False,
+            no_hand = {
+                'label': 'No hand detected',
+                'sinhala': 'අත හොයාගත නොහැක — නැවත try කරන්න',
+                'confidence': 0.0,
+                'top3': [],
+                'filtered': False,
                 'valid_frames': valid_count,
+            }
+            if use_filter == 'both':
+                return jsonify({'mode': 'comparison', 'valid_frames': valid_count,
+                                'model_a': no_hand, 'model_b': no_hand})
+            return jsonify(no_hand)
+
+        # ── COMPARISON MODE (examiner demo) ──────────
+        if use_filter == 'both':
+            label_a, conf_a, top3_a = run_inference(no_filter(frames))
+            label_b, conf_b, top3_b = run_inference(apply_noise_filter(frames))
+
+            print(f"  🔴 Model A (baseline) : {label_a} ({conf_a*100:.1f}%)")
+            print(f"  🟢 Model B (proposed) : {label_b} ({conf_b*100:.1f}%)")
+
+            return jsonify({
+                'mode'        : 'comparison',
+                'valid_frames': valid_count,
+                'model_a': {
+                    'label'     : label_a,
+                    'sinhala'   : SINHALA_TRANSLATIONS.get(label_a, label_a),
+                    'confidence': conf_a,
+                    'top3'      : top3_a,
+                    'filtered'  : False,
+                },
+                'model_b': {
+                    'label'     : label_b,
+                    'sinhala'   : SINHALA_TRANSLATIONS.get(label_b, label_b),
+                    'confidence': conf_b,
+                    'top3'      : top3_b,
+                    'filtered'  : True,
+                },
             })
 
-        # Improved noise filter apply කරන්න
-        filtered = apply_noise_filter(frames)
+        # ── SINGLE MODE ───────────────────────────────
+        if use_filter == 'false':
+            sequence      = no_filter(frames)
+            filtered_flag = False
+        else:
+            sequence      = apply_noise_filter(frames)
+            filtered_flag = True
 
-        # Run inference
-        label, confidence, top3 = run_inference(filtered)
+        label, confidence, top3 = run_inference(sequence)
         sinhala = SINHALA_TRANSLATIONS.get(label, label)
-
-        print(f"✅ Prediction: {label} ({confidence*100:.1f}%) | Valid frames: {valid_count}/30")
+        print(f"✅ {'[B-Filtered]' if filtered_flag else '[A-NoFilter]'} {label} ({confidence*100:.1f}%)")
 
         return jsonify({
             'label'       : label,
             'sinhala'     : sinhala,
             'confidence'  : confidence,
             'top3'        : top3,
-            'filtered'    : True,
+            'filtered'    : filtered_flag,
             'valid_frames': valid_count,
         })
 
@@ -312,8 +315,6 @@ def predict_sequence():
 # MAIN
 # ================================================
 if __name__ == '__main__':
-    # Get local IP for display
-    import socket
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -322,22 +323,20 @@ if __name__ == '__main__':
     except Exception:
         local_ip = "127.0.0.1"
 
-    print("\n" + "=" * 50)
-    print("  SLSL Flask Server")
-    print("=" * 50)
+    print("\n" + "=" * 52)
+    print("  SLSL Flask Server — Research Demo")
+    print("=" * 52)
     print(f"  Signs    : {len(SIGN_LABELS)}")
     print(f"  Sequence : {SEQUENCE_LENGTH} frames")
     print(f"  Filter   : velocity threshold {NOISE_THRESHOLD}")
-    print("=" * 50)
-    print(f"\n  Flutter app එකේ SERVER_IP මේකට set කරන්න:")
-    print(f"  http://{local_ip}:5000")
-    print(f"\n  Health check:")
-    print(f"  http://{local_ip}:5000/health")
-    print("=" * 50 + "\n")
+    print("─" * 52)
+    print(f"  Flutter  : http://{local_ip}:5000")
+    print(f"  Health   : http://{local_ip}:5000/health")
+    print("─" * 52)
+    print("  Endpoints:")
+    print("  ?filter=true  → Model B (proposed)")
+    print("  ?filter=false → Model A (baseline)")
+    print("  ?filter=both  → Comparison mode 🎓")
+    print("=" * 52 + "\n")
 
-    app.run(
-        host    ='0.0.0.0',
-        port    =5000,
-        debug   =False,
-        threaded=True,
-    )
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
