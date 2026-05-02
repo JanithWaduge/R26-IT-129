@@ -13,49 +13,60 @@ try:
     HAS_STATSMODELS = True
 except ImportError:
     HAS_STATSMODELS = False
-    print("⚠️  statsmodels not found. Run: pip install statsmodels")
+    print("⚠️  pip install statsmodels")
 
 print("=" * 60)
-print("   SLSL Noise Filter Experiment")
+print("   SLSL Noise Filter Experiment  (v3 — fixed)")
 print("   Model A (Baseline) vs Model B (Proposed)")
 print("=" * 60)
 
 # ================================================
-# PATHS
+# PATHS  — keypoints_data.csv use කරනවා (900 rows)
 # ================================================
-CSV_PATH     = r'C:\Users\Janith\Desktop\R26-IT-129\Janith\keypoints_clean.csv'
+CSV_PATH     = r'C:\Users\Janith\Desktop\R26-IT-129\Janith\keypoints_data.csv'
 MODEL_PATH   = r'C:\Users\Janith\Desktop\R26-IT-129\Janith\models'
 RESULTS_PATH = r'C:\Users\Janith\Desktop\R26-IT-129\Janith\experiment_results.csv'
 
 SEQUENCE_LENGTH = 30
 NOISE_THRESHOLD = 0.02
 FP_THRESHOLD    = 0.5
-EPOCHS          = 50
-BATCH_SIZE      = 16    # Small batch — dataset එක කුඩා නිසා
+EPOCHS          = 80
+BATCH_SIZE      = 32
+TOP_SIGNS       = 10    # Top 10 signs only — more samples per class
+MIN_SAMPLES     = 5     # At least 5 samples per sign
 N_ACCIDENTAL    = 100
+AUG_FACTOR      = 3     # Augment each sample 3x
 
 # ================================================
-# STEP 1 — LOAD & PREPARE DATA
+# STEP 1 — LOAD DATA
 # ================================================
-print("\n[1/6] Loading dataset...")
+print("\n[1/7] Loading dataset...")
 
-if not os.path.exists(CSV_PATH):
-    raise FileNotFoundError(f"CSV not found: {CSV_PATH}")
+# Try keypoints_data.csv first, fallback to keypoints_clean.csv
+if os.path.exists(CSV_PATH):
+    df = pd.read_csv(CSV_PATH)
+    print(f"      Using: keypoints_data.csv")
+else:
+    CSV_PATH = CSV_PATH.replace('keypoints_data', 'keypoints_clean')
+    df = pd.read_csv(CSV_PATH)
+    print(f"      Fallback: keypoints_clean.csv")
 
-df = pd.read_csv(CSV_PATH)
-print(f"      Raw samples       : {len(df)}")
-print(f"      Raw columns       : {len(df.columns)}")
+print(f"      Raw samples : {len(df)}, Columns: {len(df.columns)}")
 
 sign_counts = df['label'].value_counts()
-print(f"\n      Samples per sign (top 10):")
-print(f"      {dict(sign_counts.head(10))}")
+print(f"\n      All signs and counts:")
+for sign, count in sign_counts.items():
+    print(f"        {sign}: {count}")
 
-# Keep signs with >= 2 samples
-MIN_SAMPLES = 2
+# Keep top N signs with minimum samples
 valid_signs = sign_counts[sign_counts >= MIN_SAMPLES].index
 df = df[df['label'].isin(valid_signs)]
+top_signs = df['label'].value_counts().head(TOP_SIGNS).index
+df = df[df['label'].isin(top_signs)]
 
-print(f"\n      After filter (>={MIN_SAMPLES} samples): {len(df)} samples, {df['label'].nunique()} signs")
+print(f"\n      After filter (top {TOP_SIGNS}, >={MIN_SAMPLES} samples):")
+print(f"      {len(df)} samples, {df['label'].nunique()} signs")
+print(f"      Signs: {list(df['label'].unique())}")
 
 feature_cols = [c for c in df.columns if c != 'label']
 X_raw        = df[feature_cols].values.astype(np.float32)
@@ -65,32 +76,86 @@ le           = LabelEncoder()
 y_encoded    = le.fit_transform(y_raw)
 num_classes  = len(le.classes_)
 
-# Reshape: (samples, 30, 63)
 X = X_raw.reshape(-1, SEQUENCE_LENGTH, 63)
-print(f"      X shape: {X.shape}, Classes: {num_classes}")
+print(f"\n      X shape: {X.shape}, Classes: {num_classes}")
 
-# ── Train/Test split ─────────────────────────────
-# stratify removed — dataset too small (106 samples, 30 classes)
+
+# ================================================
+# STEP 2 — DATA AUGMENTATION
+# (samples per class වැඩි කරනවා)
+# ================================================
+print(f"\n[2/7] Data augmentation (factor={AUG_FACTOR})...")
+
+def augment_sequence(seq, rng, noise_std=0.005, scale_range=(0.95, 1.05)):
+    """
+    Augment a sequence with:
+    - Small Gaussian noise (simulate sensor variation)
+    - Random scaling (simulate different hand sizes)
+    - Random time shift (simulate timing variation)
+    """
+    aug = seq.copy()
+
+    # Gaussian noise
+    aug += rng.normal(0, noise_std, aug.shape).astype(np.float32)
+
+    # Random scale
+    scale = rng.uniform(scale_range[0], scale_range[1])
+    aug   = aug * scale
+
+    # Random time shift (roll frames)
+    shift = rng.integers(-3, 4)
+    aug   = np.roll(aug, shift, axis=0)
+
+    return np.clip(aug, 0.0, 1.0).astype(np.float32)
+
+rng = np.random.default_rng(42)
+X_aug_list = list(X)
+y_aug_list = list(y_encoded)
+
+for i in range(len(X)):
+    for _ in range(AUG_FACTOR):
+        X_aug_list.append(augment_sequence(X[i], rng))
+        y_aug_list.append(y_encoded[i])
+
+X_aug = np.array(X_aug_list, dtype=np.float32)
+y_aug = np.array(y_aug_list)
+print(f"      Before aug: {len(X)} | After aug: {len(X_aug)} samples")
+
+
+# ================================================
+# STEP 3 — TRAIN / TEST SPLIT
+# ================================================
+print(f"\n[3/7] Train/test split...")
+
+# Check if stratify is possible
+min_class_count = np.min(np.bincount(y_aug))
+test_size       = 0.2
+can_stratify    = (int(len(y_aug) * test_size) >= num_classes) and (min_class_count >= 2)
+
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y_encoded,
-    test_size=0.25,
-    random_state=42
+    X_aug, y_aug,
+    test_size=test_size,
+    random_state=42,
+    stratify=y_aug if can_stratify else None
 )
 
-print(f"      Train: {len(X_train)}, Test: {len(X_test)}")
-print(f"      Train classes: {len(np.unique(y_train))}, Test classes: {len(np.unique(y_test))}")
+print(f"      Stratified : {'Yes' if can_stratify else 'No'}")
+print(f"      Train      : {len(X_train)}, Test: {len(X_test)}")
+print(f"      Classes    : {num_classes}")
 
 
 # ================================================
-# STEP 2 — NOISE FILTER
+# STEP 4 — NOISE FILTER
 # ================================================
-print(f"\n[2/6] Noise filter ready (threshold={NOISE_THRESHOLD})")
+print(f"\n[4/7] Noise filter ready (threshold={NOISE_THRESHOLD})")
 
 def apply_noise_filter(sequence, threshold=NOISE_THRESHOLD):
     """
-    Velocity-Threshold Noise Filter (Novel Research Contribution)
-    Removes frames where hand movement velocity is below threshold,
-    filtering out accidental/non-intentional movements.
+    Novel Research Contribution:
+    Velocity-Threshold Noise Filter for SLSL recognition.
+
+    Removes low-velocity frames representing accidental
+    hand movements (scratching, phone adjusting, etc.)
     """
     if len(sequence) < 2:
         padded = list(sequence) + [[0.0]*63] * (SEQUENCE_LENGTH - len(sequence))
@@ -116,16 +181,16 @@ def apply_noise_filter(sequence, threshold=NOISE_THRESHOLD):
 
 
 # ================================================
-# STEP 3 — ACCIDENTAL MOVEMENTS
+# STEP 5 — ACCIDENTAL MOVEMENTS
 # ================================================
-print(f"\n[3/6] Generating {N_ACCIDENTAL} accidental movement samples...")
+print(f"\n[5/7] Generating {N_ACCIDENTAL} accidental movement samples...")
 
 def generate_accidental_movements(n_samples=N_ACCIDENTAL, seed=42):
     """
     Realistic accidental hand movements:
-      Group 1 (50%): Near-static (phone resting, hand in lap) — std=0.003
-      Group 2 (50%): Small ambiguous moves (scratching, adjusting) — std=0.015
-    These should NOT be classified as signs -> any classification = false positive
+      Group 1 (50%): Near-static — phone resting, hand in lap (std=0.003)
+      Group 2 (50%): Small ambiguous — scratching, adjusting (std=0.015)
+    Any confident classification of these = False Positive
     """
     rng = np.random.default_rng(seed)
     accidental = []
@@ -140,13 +205,12 @@ def generate_accidental_movements(n_samples=N_ACCIDENTAL, seed=42):
     return np.array(accidental, dtype=np.float32)
 
 accidental_data = generate_accidental_movements()
-print(f"      Near-static (std=0.003): {N_ACCIDENTAL//2} samples")
-print(f"      Small moves (std=0.015): {N_ACCIDENTAL - N_ACCIDENTAL//2} samples")
+print(f"      Near-static (std=0.003) : {N_ACCIDENTAL//2} samples")
+print(f"      Small moves  (std=0.015) : {N_ACCIDENTAL - N_ACCIDENTAL//2} samples")
 
 
 # ================================================
-# STEP 4 — MODEL BUILDER
-# (Lighter architecture — small dataset)
+# MODEL BUILDER
 # ================================================
 def build_model(num_classes, name="model"):
     from tensorflow.keras.models import Sequential
@@ -156,20 +220,22 @@ def build_model(num_classes, name="model"):
     )
 
     model = Sequential(name=name, layers=[
-        Conv1D(32, kernel_size=3, activation='relu', input_shape=(SEQUENCE_LENGTH, 63)),
+        Conv1D(64, kernel_size=3, activation='relu', input_shape=(SEQUENCE_LENGTH, 63)),
         BatchNormalization(),
         MaxPooling1D(pool_size=2),
         Dropout(0.3),
 
-        Conv1D(64, kernel_size=3, activation='relu'),
+        Conv1D(128, kernel_size=3, activation='relu'),
         BatchNormalization(),
         MaxPooling1D(pool_size=2),
         Dropout(0.3),
 
-        LSTM(64, return_sequences=False),
-        Dropout(0.4),
+        LSTM(128, return_sequences=True),
+        Dropout(0.3),
+        LSTM(64),
+        Dropout(0.3),
 
-        Dense(64, activation='relu'),
+        Dense(128, activation='relu'),
         BatchNormalization(),
         Dropout(0.4),
 
@@ -183,31 +249,38 @@ def build_model(num_classes, name="model"):
     )
     return model
 
+callbacks_list = [
+    tf.keras.callbacks.EarlyStopping(
+        monitor='val_accuracy', patience=15,
+        restore_best_weights=True, mode='max'
+    ),
+    tf.keras.callbacks.ReduceLROnPlateau(
+        monitor='val_loss', factor=0.5,
+        patience=7, min_lr=1e-5
+    )
+]
+
 
 # ================================================
-# STEP 5a — MODEL A: BASELINE (No Filter)
+# MODEL A — BASELINE (No Filter)
 # ================================================
 print("\n" + "="*60)
-print("[4/6] MODEL A — Baseline (No Noise Filter)")
+print("[6/7-A] MODEL A — Baseline (No Noise Filter)")
 print("="*60)
 
 model_a = build_model(num_classes, name="model_a")
 print(f"      Parameters: {model_a.count_params():,}")
 
-early_stop_a = tf.keras.callbacks.EarlyStopping(
-    monitor='val_loss', patience=10, restore_best_weights=True
-)
-
-history_a = model_a.fit(
+model_a.fit(
     X_train, y_train,
     epochs=EPOCHS,
     batch_size=BATCH_SIZE,
     validation_data=(X_test, y_test),
-    callbacks=[early_stop_a],
+    callbacks=callbacks_list,
     verbose=1
 )
 
-loss_a, acc_a = model_a.evaluate(X_test, y_test, verbose=0)
+_, acc_a = model_a.evaluate(X_test, y_test, verbose=0)
 print(f"\n  ✅ Model A — Test Accuracy : {acc_a*100:.2f}%")
 
 preds_a      = model_a.predict(accidental_data, verbose=0)
@@ -226,10 +299,10 @@ print("  💾 Model A saved.")
 
 
 # ================================================
-# STEP 5b — MODEL B: PROPOSED (With Filter)
+# MODEL B — PROPOSED (With Filter)
 # ================================================
 print("\n" + "="*60)
-print("[5/6] MODEL B — Proposed (With Noise Filter)")
+print("[6/7-B] MODEL B — Proposed (With Noise Filter)")
 print("="*60)
 
 print("      Applying noise filter to training data...")
@@ -248,20 +321,16 @@ print(f"      Avg removed per seq    : {avg_removed:.2f}")
 
 model_b = build_model(num_classes, name="model_b")
 
-early_stop_b = tf.keras.callbacks.EarlyStopping(
-    monitor='val_loss', patience=10, restore_best_weights=True
-)
-
-history_b = model_b.fit(
+model_b.fit(
     X_train_filtered, y_train,
     epochs=EPOCHS,
     batch_size=BATCH_SIZE,
     validation_data=(X_test, y_test),
-    callbacks=[early_stop_b],
+    callbacks=callbacks_list,
     verbose=1
 )
 
-loss_b, acc_b = model_b.evaluate(X_test, y_test, verbose=0)
+_, acc_b = model_b.evaluate(X_test, y_test, verbose=0)
 print(f"\n  ✅ Model B — Test Accuracy : {acc_b*100:.2f}%")
 
 fp_count_b        = 0
@@ -291,10 +360,10 @@ print("  💾 Model B saved.")
 
 
 # ================================================
-# STEP 6 — STATISTICAL ANALYSIS
+# STEP 7 — STATISTICAL ANALYSIS
 # ================================================
 print("\n" + "="*60)
-print("[6/6] STATISTICAL ANALYSIS")
+print("[7/7] STATISTICAL ANALYSIS")
 print("="*60)
 
 fpr_reduction = ((fpr_a - fpr_b) / fpr_a * 100) if fpr_a > 0 else 0.0
@@ -309,13 +378,15 @@ mcnemar_p = None
 if HAS_STATSMODELS:
     b = int(np.sum((outcomes_a == 1) & (outcomes_b == 0)))
     c = int(np.sum((outcomes_a == 0) & (outcomes_b == 1)))
-    print(f"\n  McNemar table: b={b} (A=FP, B=ok), c={c} (A=ok, B=FP)")
+    print(f"\n  McNemar: b={b} (A=FP,B=ok)  c={c} (A=ok,B=FP)")
     if b + c > 0:
-        mcnemar_result = mcnemar([[0, b], [c, 0]], exact=True)
-        mcnemar_p      = mcnemar_result.pvalue
+        res       = mcnemar([[0, b], [c, 0]], exact=True)
+        mcnemar_p = res.pvalue
         print(f"  McNemar p-value : {mcnemar_p:.4f}")
     else:
-        print("  McNemar skipped — no discordant pairs (b=0, c=0)")
+        print("  McNemar skipped — no discordant pairs")
+
+sig_p = p_ttest if mcnemar_p is None else min(p_ttest, mcnemar_p)
 
 print("\n" + "="*60)
 print("  FINAL RESULTS SUMMARY")
@@ -346,16 +417,13 @@ print(f"""
 if mcnemar_p is not None:
     print(f"    McNemar's p-value      : {mcnemar_p:.4f}")
 
-sig_p = p_ttest if mcnemar_p is None else min(p_ttest, mcnemar_p)
 print()
 if sig_p < 0.05:
     print("  ✅ H1 SUPPORTED: Noise filter significantly reduces FPR (p < 0.05)")
 else:
-    print(f"  ⚠️  H1 NOT SUPPORTED at p=0.05 (p = {sig_p:.4f})")
-    print("     Note: Small dataset (106 samples) reduces statistical power.")
-    print("     Results still valid as exploratory research finding.")
-
+    print(f"  ⚠️  p = {sig_p:.4f} — not significant. Check dataset size.")
 print("="*60)
+
 
 # ================================================
 # SAVE CSV
@@ -403,7 +471,15 @@ rows = [
      'Difference': '-'},
     {'Metric': 'H1 Supported',
      'Model A (Baseline)': '-',
-     'Model B (Proposed)': 'Yes' if sig_p < 0.05 else 'No (exploratory)',
+     'Model B (Proposed)': 'Yes' if sig_p < 0.05 else 'No',
+     'Difference': '-'},
+    {'Metric': 'Dataset (CSV used)',
+     'Model A (Baseline)': os.path.basename(CSV_PATH),
+     'Model B (Proposed)': os.path.basename(CSV_PATH),
+     'Difference': '-'},
+    {'Metric': 'Augmentation factor',
+     'Model A (Baseline)': AUG_FACTOR,
+     'Model B (Proposed)': AUG_FACTOR,
      'Difference': '-'},
 ]
 
