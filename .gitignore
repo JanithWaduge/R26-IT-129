@@ -18,4 +18,5 @@ __pycache__/
 
 # Flutter build
 slsl_app/build/
-slsl_app/.dart_tool/
+slsl_app/.dart_tool/Janith/keypoints_data.csv
+Janith/keypoints_clean.csv
