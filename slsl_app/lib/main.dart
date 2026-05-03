@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'screens/home_screen.dart';
+import 'screens/landing_screen.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Portrait mode lock
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
-
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor         : Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+  ));
   runApp(const SLSLApp());
 }
 
@@ -19,17 +18,16 @@ class SLSLApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SLSL Recognizer',
+      title                     : 'SLSL — Sign Language App',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF00B4D8),
+          seedColor : const Color(0xFF00B4D8),
           brightness: Brightness.dark,
         ),
         useMaterial3: true,
-        fontFamily: 'Roboto',
       ),
-      home: const HomeScreen(),
+      home: const LandingScreen(),
     );
   }
 }
