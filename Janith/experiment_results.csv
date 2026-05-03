@@ -1,0 +1,14 @@
+Metric,Model A (Baseline),Model B (Proposed),Difference
+Sign Accuracy (%),34.62,34.62,+0.00
+False Positives (out of 100),0,0,0
+False Positive Rate (%),0.00,0.00,+0.00
+FPR Reduction (%),-,0.00,-
+Mean Confidence on Accidentals,0.2064,0.1770,-0.0294
+Avg Frames Removed by Filter,-,24.31,-
+t-statistic,-,88.6850,-
+t-test p-value,-,0.0000,-
+McNemar's p-value,-,N/A,-
+Cohen's d (effect size),-,12.6051,-
+H1 Supported,-,Yes,-
+Dataset (CSV used),keypoints_data.csv,keypoints_data.csv,-
+Augmentation factor,3,3,-

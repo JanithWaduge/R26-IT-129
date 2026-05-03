@@ -1,22 +1,21 @@
-# Virtual Environment
-slsl_env/
+# Dataset videos
+Janith/dataset/
+dataset/
 
-# Large Model Files
+# Python venv
+slsl_env/
+venv/
+env/
+
+# Model files (large)
 *.h5
 *.tflite
-*.keras
+*.pb
 
-# Dataset Files (large)
-*.csv
-
-# Python Cache
+# Python cache
 __pycache__/
 *.pyc
-*.pyo
 
-# VS Code
-.vscode/
-
-# OS Files
-.DS_Store
-Thumbs.db
+# Flutter build
+slsl_app/build/
+slsl_app/.dart_tool/
