@@ -1,13 +1,14 @@
-# Dataset videos
+# Dataset & training data
 Janith/dataset/
-dataset/
+Janith/keypoints_data.csv
+Janith/keypoints_clean.csv
 
 # Python venv
 slsl_env/
 venv/
 env/
 
-# Model files (large)
+# Model files
 *.h5
 *.tflite
 *.pb
@@ -15,8 +16,13 @@ env/
 # Python cache
 __pycache__/
 *.pyc
+*.pyo
 
-# Flutter build
+# Flutter
 slsl_app/build/
-slsl_app/.dart_tool/Janith/keypoints_data.csv
-Janith/keypoints_clean.csv
+slsl_app/.dart_tool/
+slsl_app/.flutter-plugins
+slsl_app/.flutter-plugins-dependencies
+
+# VS Code
+.vscode/settings.json
