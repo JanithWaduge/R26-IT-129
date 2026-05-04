@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants.dart';
-import 'camera_screen.dart';
+import 'camera_screen_janith.dart';
 
 // ══════════════════════════════════════════════
 // Home Screen — SLSL Sign Recognition Module
