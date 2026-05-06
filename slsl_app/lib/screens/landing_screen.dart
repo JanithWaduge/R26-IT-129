@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'home_screen_janith.dart';
+import 'voice_to_sign_screen.dart'; // Objective 1
 
 // ══════════════════════════════════════════════════════════════════
 // Landing Screen
@@ -447,16 +448,17 @@ class _LandingScreenState extends State<LandingScreen>
           ),
           const SizedBox(height: 14),
 
-          // Module 2 placeholder
+          // Module 2 — Objective 1 (Voice to Sign)
           _ModuleCard(
             icon       : Icons.record_voice_over_rounded,
-            title      : 'Text to Sign Language',
-            description: 'Convert spoken or typed text into sign language animations '
-                'for seamless communication.',
-            tags       : ['Text Input', 'Animation', 'Bilingual'],
+            title      : 'Voice to Sign Language',
+            description: 'Speak in Sinhala or Tamil and watch a 3D avatar '
+                'translate your words into sign language animations.',
+            tags       : ['Voice Input', 'Sinhala / Tamil', 'Animation'],
             accentColor: const Color(0xFF7B2FBE),
-            isAvailable: false,
-            onTap      : () => _showUnavailable(context),
+            isAvailable: true,
+            onTap      : () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const VoiceToSignScreen())),
           ),
           const SizedBox(height: 14),
 

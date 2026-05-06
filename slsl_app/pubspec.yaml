@@ -22,6 +22,10 @@ dependencies:
   # Permission handling
   permission_handler: ^11.3.0
 
+  # Objective 1 — Voice-to-Sign
+  record: ^5.0.4          # Microphone recording
+  path_provider: ^2.1.2   # Temp directory for audio files
+
   # UI
   cupertino_icons: ^1.0.2
 
