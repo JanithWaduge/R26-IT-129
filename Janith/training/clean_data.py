@@ -4,7 +4,7 @@ import numpy as np
 # ================================================
 # LOAD
 # ================================================
-CSV_PATH = r'C:\Users\Janith\Desktop\R26-IT-129\Janith\keypoints_data.csv'
+CSV_PATH = r'D:\R26-IT-129\Janith\keypoints_data.csv'
 
 df = pd.read_csv(CSV_PATH)
 print(f"Original shape: {df.shape}")
@@ -52,6 +52,6 @@ print(df['label'].value_counts().to_string())
 # ================================================
 # SAVE CLEANED CSV
 # ================================================
-CLEAN_CSV = r'C:\Users\Janith\Desktop\R26-IT-129\Janith\keypoints_clean.csv'
+CLEAN_CSV = r'D:\R26-IT-129\Janith\keypoints_clean.csv'
 df.to_csv(CLEAN_CSV, index=False)
 print(f"\n✅ Saved: {CLEAN_CSV}")

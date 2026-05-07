@@ -14,6 +14,7 @@ import tensorflow as tf
 import base64
 import os
 import socket
+import threading
 
 app = Flask(__name__)
 
@@ -107,6 +108,13 @@ hands_detector = mp_hands.Hands(
 )
 print("✅ MediaPipe ready")
 
+# ── THREAD-SAFE LOCKS ────────────────────────────
+# MediaPipe Hands සහ TFLite Interpreter දෙකම thread-safe නෑ.
+# Flask threaded=True නිසා concurrent requests වලට ඒවා එකවර access වෙනවා.
+# මේ locks දෙකෙන් එකකට කෙනෙක් ගන්න ඉඩ දෙනවා.
+mediapipe_lock   = threading.Lock()
+interpreter_lock = threading.Lock()
+
 # ================================================
 # NOISE FILTER — Research Contribution
 # Novel velocity-threshold-based noise filtering
@@ -152,13 +160,18 @@ def no_filter(sequence):
 
 
 # ================================================
-# EXTRACT KEYPOINTS FROM IMAGE
+# EXTRACT KEYPOINTS FROM IMAGE  (THREAD-SAFE)
 # ================================================
 def extract_keypoints(image_bgr):
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-    results   = hands_detector.process(image_rgb)
+
+    # Lock — only one thread can call MediaPipe at a time
+    with mediapipe_lock:
+        results = hands_detector.process(image_rgb)
+
     if not results.multi_hand_landmarks:
         return None
+
     hand_landmarks = results.multi_hand_landmarks[0]
     keypoints = []
     for lm in hand_landmarks.landmark:
@@ -167,13 +180,16 @@ def extract_keypoints(image_bgr):
 
 
 # ================================================
-# RUN TFLITE INFERENCE
+# RUN TFLITE INFERENCE  (THREAD-SAFE)
 # ================================================
 def run_inference(sequence):
     input_data = np.array([sequence], dtype=np.float32)
-    interpreter.set_tensor(input_details[0]['index'], input_data)
-    interpreter.invoke()
-    output = interpreter.get_tensor(output_details[0]['index'])[0]
+
+    # Lock — TFLite interpreter is not thread-safe
+    with interpreter_lock:
+        interpreter.set_tensor(input_details[0]['index'], input_data)
+        interpreter.invoke()
+        output = interpreter.get_tensor(output_details[0]['index'])[0].copy()
 
     top_idx   = int(np.argmax(output))
     top_conf  = float(output[top_idx])
@@ -326,12 +342,13 @@ if __name__ == '__main__':
     print("\n" + "=" * 52)
     print("  SLSL Flask Server — Research Demo")
     print("=" * 52)
-    print(f"  Signs    : {len(SIGN_LABELS)}")
-    print(f"  Sequence : {SEQUENCE_LENGTH} frames")
-    print(f"  Filter   : velocity threshold {NOISE_THRESHOLD}")
+    print(f"  Signs       : {len(SIGN_LABELS)}")
+    print(f"  Sequence    : {SEQUENCE_LENGTH} frames")
+    print(f"  Filter      : velocity threshold {NOISE_THRESHOLD}")
+    print(f"  Thread-safe : MediaPipe + TFLite locked")
     print("─" * 52)
-    print(f"  Flutter  : http://{local_ip}:5000")
-    print(f"  Health   : http://{local_ip}:5000/health")
+    print(f"  Flutter     : http://{local_ip}:5000")
+    print(f"  Health      : http://{local_ip}:5000/health")
     print("─" * 52)
     print("  Endpoints:")
     print("  ?filter=true  → Model B (proposed)")

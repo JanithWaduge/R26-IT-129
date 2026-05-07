@@ -12,8 +12,8 @@ import os
 # ================================================
 # PATHS
 # ================================================
-CSV_PATH   = r'C:\Users\Janith\Desktop\R26-IT-129\Janith\keypoints_clean.csv'
-MODEL_PATH = r'C:\Users\Janith\Desktop\R26-IT-129\Janith\models'
+CSV_PATH   = r'D:\R26-IT-129\Janith\keypoints_clean.csv'
+MODEL_PATH = r'D:\R26-IT-129\Janith\models'
 
 os.makedirs(MODEL_PATH, exist_ok=True)
 
