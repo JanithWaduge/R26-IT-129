@@ -3,7 +3,13 @@ Stage 1 — Whisper ASR Module
 Loads OpenAI Whisper once and transcribes audio files in Sinhala or Tamil.
 """
 
+import os
 import whisper
+
+# Ensure ffmpeg is on PATH regardless of how the server was launched
+_ffmpeg_dir = r'C:\Users\ASUS\AppData\Local\Microsoft\WinGet\Links'
+if _ffmpeg_dir not in os.environ.get('PATH', ''):
+    os.environ['PATH'] = _ffmpeg_dir + os.pathsep + os.environ.get('PATH', '')
 
 # Maps Whisper language codes to display names and locale tags
 _LANGUAGE_NAMES = {
@@ -36,6 +42,15 @@ class WhisperASR:
         self.model = whisper.load_model(model_size)
         print("[Whisper] Model ready.")
 
+    def _clean_transcript(self, text: str) -> str:
+        """Remove repeated character loops from Whisper hallucination."""
+        import re
+        # Remove single-character repetitions more than 3 times
+        text = re.sub(r'(.)\1{3,}', r'\1', text)
+        # Remove Sinhala syllable repetitions more than 2 times
+        text = re.sub(r'([඀-෿]{1,3})\1{2,}', r'\1', text)
+        return text.strip()
+
     def transcribe(self, audio_path: str, language: str | None = None) -> dict:
         """
         Transcribe an audio file.
@@ -54,11 +69,19 @@ class WhisperASR:
                 "confidence":    0.82        # 0.0 – 1.0, derived from segment log-probs
             }
         """
-        decode_options: dict = {}
-        if language:
-            decode_options["language"] = language
-
-        result = self.model.transcribe(audio_path, **decode_options)
+        result = self.model.transcribe(
+            audio_path,
+            language=language,
+            task="transcribe",
+            fp16=False,
+            beam_size=1,
+            best_of=1,
+            temperature=[0.0, 0.2, 0.4],
+            condition_on_previous_text=False,
+            compression_ratio_threshold=1.35,
+            no_speech_threshold=0.6,
+            logprob_threshold=-1.0,
+        )
 
         detected = result.get("language", "unknown")
 
@@ -72,7 +95,7 @@ class WhisperASR:
             confidence = 0.0
 
         return {
-            "text":          result["text"].strip(),
+            "text":          self._clean_transcript(result["text"]),
             "language":      detected,
             "language_name": _LANGUAGE_NAMES.get(detected, detected.upper()),
             "locale":        _LOCALE_MAP.get(detected, detected),

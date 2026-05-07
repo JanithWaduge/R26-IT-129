@@ -7,16 +7,24 @@ Janith/keypoints_clean.csv
 slsl_env/
 venv/
 env/
+.venv/
 
 # Model files
 *.h5
 *.tflite
 *.pb
+*.bin
+*.pt
+*.pth
+*.ckpt
 
 # Python cache
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
+*.egg-info/
 
 # Flutter
 slsl_app/build/
@@ -26,3 +34,31 @@ slsl_app/.flutter-plugins-dependencies
 
 # VS Code
 .vscode/settings.json
+.idea/
+
+# Gimhana - dataset & models (too large for GitHub)
+gimhana/voicedataset/
+gimhana/sinhala_data/
+gimhana/models/
+
+# Audio files
+*.wav
+*.flac
+*.mp3
+
+# Large archive files
+*.zip
+*.tar
+*.tar.gz
+
+# Environment variables
+.env
+*.env
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp

@@ -11,10 +11,10 @@ import os
 import tempfile
 
 import uvicorn
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from asr.whisper_asr import WhisperASR
+from sinhala_asr import load_sinhala_model, transcribe_sinhala
 
 app = FastAPI(
     title="SLSL Voice-to-Sign API",
@@ -30,10 +30,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Load Whisper once at startup ─────────────────────────────────────────────
-# Change model_size to "medium" or "large" for better Sinhala/Tamil accuracy
-# at the cost of more RAM and slower first load.
-_asr = WhisperASR(model_size="small")
+# ── Load Sinhala model once at startup ───────────────────────────────────────
+# Uses Ransaka/whisper-tiny-sinhala-20k-8k-steps-v2 from HuggingFace.
+# Model is cached after first download — subsequent starts are instant.
+_asr_pipeline = load_sinhala_model()
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -41,16 +41,13 @@ _asr = WhisperASR(model_size="small")
 @app.get("/health")
 def health():
     """Quick liveness check — Flutter app pings this before showing the screen."""
-    return {"status": "ok", "model": _asr.model_size}
+    return {"status": "ok", "model": "whisper-tiny-sinhala"}
 
 
 @app.post("/asr/transcribe")
 async def transcribe(
     file: UploadFile = File(...),
-    language: str | None = Query(
-        default=None,
-        description="Force language: 'si' = Sinhala, 'ta' = Tamil. Omit for auto-detect.",
-    ),
+    language: str | None = Form(default=None),
 ):
     """
     Accept an audio file from the Flutter app and return transcribed text.
@@ -69,7 +66,7 @@ async def transcribe(
             tmp.write(await file.read())
             tmp_path = tmp.name
 
-        result = _asr.transcribe(tmp_path, language=language)
+        result = transcribe_sinhala(tmp_path, language=language or "si", asr=_asr_pipeline)
         return result
 
     except Exception as exc:

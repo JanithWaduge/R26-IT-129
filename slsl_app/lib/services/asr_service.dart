@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 // Find it with: ipconfig (Windows) → "IPv4 Address" of your Wi-Fi adapter.
 // Example: 'http://192.168.1.42:8000'
 // Android emulator uses 10.0.2.2 to reach the host machine.
-const String kAsrServerUrl = 'http://10.79.21.190:8000';
+const String kAsrServerUrl = 'http://10.79.21.207:8000';
 
 // ── Data model ────────────────────────────────────────────────────────────
 
@@ -59,7 +59,7 @@ class AsrService {
       request.fields['language'] = language;
     }
 
-    final streamed = await request.send().timeout(const Duration(seconds: 60));
+    final streamed = await request.send().timeout(const Duration(seconds: 120));
     final body     = await streamed.stream.bytesToString();
 
     if (streamed.statusCode != 200) {
