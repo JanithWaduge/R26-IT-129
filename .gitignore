@@ -1,0 +1,28 @@
+# Dataset & training data
+Janith/dataset/
+Janith/keypoints_data.csv
+Janith/keypoints_clean.csv
+
+# Python venv
+slsl_env/
+venv/
+env/
+
+# Model files
+*.h5
+*.tflite
+*.pb
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Flutter
+slsl_app/build/
+slsl_app/.dart_tool/
+slsl_app/.flutter-plugins
+slsl_app/.flutter-plugins-dependencies
+
+# VS Code
+.vscode/settings.json
