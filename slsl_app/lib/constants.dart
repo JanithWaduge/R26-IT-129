@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
 // ================================================
-// SERVER
+// SERVER — PC IP address change කරන්න
 // ================================================
-const String kServerUrl = 'http://172.20.10.5:5000';  // ← PC IP address
+const String kServerUrl = 'http://172.20.10.5:5000';
 
 // ================================================
-// SIGN LABELS
+// SIGN LABELS — 29 signs (Whiteboard Marker pending)
 // ================================================
 const List<String> kSignLabels = [
   'Allocate', 'Answer', 'Answer Properly', 'Answer Sheet', 'Ask Question',
@@ -14,13 +14,12 @@ const List<String> kSignLabels = [
   'Collect', 'Comparing', 'Concentrate', 'Continuing', 'Coordinate',
   'Copying', 'Correct Mistake', 'Describe', 'Discuss', 'Discuss Topic',
   'Distribute', 'Documenting', 'Grade', 'Practice', 'Research',
-  'Review', 'Study', 'Support', 'Teacher', 'Whiteboard Marker',
+  'Review', 'Study', 'Support', 'Teacher',
 ];
 
 // ================================================
 // MODEL SETTINGS
 // ================================================
-const String kModelPath           = 'assets/slsl_model.tflite';
 const int    kSequenceLength      = 30;
 const int    kNumKeypoints        = 63;
 const double kConfidenceThreshold = 0.60;
