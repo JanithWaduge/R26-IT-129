@@ -41,10 +41,22 @@ gimhana/voicedataset/
 gimhana/sinhala_data/
 gimhana/models/
 
+# Sign language video dataset - too large
+sign_dataset/
+gimhana/sign_dataset/
+
+# Voice dataset (root level)
+voicedataset/
+
 # Audio files
 *.wav
 *.flac
 *.mp3
+
+# Video files anywhere in project
+*.mp4
+*.avi
+*.mov
 
 # Large archive files
 *.zip

@@ -38,3 +38,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/slsl_model.tflite
+    - assets/sign_data.json

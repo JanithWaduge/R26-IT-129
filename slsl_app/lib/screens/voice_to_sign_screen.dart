@@ -4,6 +4,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 import '../services/asr_service.dart';
+import '../widgets/sign_avatar_widget.dart';
+import '../utils/sinhala_to_english.dart';
 
 // ══════════════════════════════════════════════════════════════════
 // Voice-to-Sign Screen  —  Objective 1, Stage 1
@@ -27,6 +29,8 @@ class _VoiceToSignScreenState extends State<VoiceToSignScreen>
   String?      _errorMessage;
   String?      _selectedLanguage; // null = auto, "si" = Sinhala, "ta" = Tamil
   bool         _serverOnline = false;
+  bool         _showSign    = false;
+  String       _signWord    = '';
 
   // Pulse animation for the record button
   late AnimationController _pulseController;
@@ -488,6 +492,13 @@ class _VoiceToSignScreenState extends State<VoiceToSignScreen>
             ),
             const SizedBox(height: 18),
 
+            // Sign avatar widget — shown after tapping Translate
+            if (_showSign) ...[
+              const SizedBox(height: 8),
+              SignAvatarWidget(signWord: _signWord),
+              const SizedBox(height: 8),
+            ],
+
             // Confidence bar
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
@@ -508,16 +519,10 @@ class _VoiceToSignScreenState extends State<VoiceToSignScreen>
               child: ElevatedButton.icon(
                 // TODO Stage 2: navigate to grammar mapping + animation
                 onPressed: r.text.isEmpty ? null : () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content          : const Text('Stage 2 — coming soon'),
-                      backgroundColor  : const Color(0xFF7B2FBE),
-                      behavior         : SnackBarBehavior.floating,
-                      shape            : RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      duration         : const Duration(seconds: 2),
-                    ),
-                  );
+                  setState(() {
+                    _signWord = translateToSign(r.text);
+                    _showSign = true;
+                  });
                 },
                 icon : const Icon(Icons.sign_language, size: 20),
                 label: const Text('Translate to Sign Language',
