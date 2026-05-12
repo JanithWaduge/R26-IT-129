@@ -14,7 +14,7 @@ const List<String> kSignLabels = [
   'Collect', 'Comparing', 'Concentrate', 'Continuing', 'Coordinate',
   'Copying', 'Correct Mistake', 'Describe', 'Discuss', 'Discuss Topic',
   'Distribute', 'Documenting', 'Grade', 'Practice', 'Research',
-  'Review', 'Study', 'Support', 'Teacher',
+  'Review', 'Study', 'Support', 'Teacher', 'Whiteboard Marker'
 ];
 
 // ================================================
