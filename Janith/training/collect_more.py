@@ -16,11 +16,11 @@ DATASET_PATH = r'D:\R26-IT-129\Janith\dataset'
 
 # Sign කියන්නේ record කරන sign name
 # File name = sign name (exactly SIGN_LABELS list එකේ tiyena vidihata)
-SIGN_NAME = "Teacher"       # ← Change this for each sign
-CATEGORY  = "Nouns"         # ← "Nouns" or "Verbs"
+SIGN_NAME = "Support"       # ← Change this for each sign
+CATEGORY  = "Verbs"         # ← "Nouns" or "Verbs"
 PERSON    = "person1"       # ← "person1", "person2", "person3"
 
-VIDEOS_PER_SIGN = 10        # ← videos count
+VIDEOS_PER_SIGN = 5       # ← videos count
 DURATION_SEC    = 3         # ← seconds per video
 FPS             = 30
 
