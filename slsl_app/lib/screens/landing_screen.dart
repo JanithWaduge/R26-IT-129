@@ -38,7 +38,8 @@ class _LandingScreenState extends State<LandingScreen>
       body: Stack(
         children: [
           Positioned(top: -80, left: -60,  child: _glow(280, const Color(0xFF00B4D8), 0.08)),
-          Positioned(top: 200, right: -80, child: _glow(200, const Color(0xFF7B2FBE), 0.06)),
+          Positioned(top: 240, right: -80, child: _glow(220, const Color(0xFF7B2FBE), 0.06)),
+          Positioned(bottom: -60, left: -40, child: _glow(200, const Color(0xFF06D6A0), 0.05)),
           SafeArea(
             child: FadeTransition(
               opacity: _fadeAnim,
@@ -72,6 +73,9 @@ class _LandingScreenState extends State<LandingScreen>
         ),
       );
 
+  // ════════════════════════════════════════════
+  // HERO
+  // ════════════════════════════════════════════
   Widget _buildHero() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 32, 24, 0),
@@ -89,7 +93,7 @@ class _LandingScreenState extends State<LandingScreen>
               Container(width: 6, height: 6,
                   decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF00B4D8))),
               const SizedBox(width: 8),
-              const Text('Sri Lanka Sign Language  •  2026',
+              const Text('R26-IT-129  •  SLIIT Research  •  2026',
                   style: TextStyle(color: Color(0xFF90E0EF), fontSize: 11,
                       fontWeight: FontWeight.w600, letterSpacing: 0.6)),
             ]),
@@ -109,9 +113,9 @@ class _LandingScreenState extends State<LandingScreen>
           ),
           const SizedBox(height: 16),
           Text(
-            'A real-time bidirectional communication app for the '
-            'Deaf and Hard of Hearing community — bridging '
-            'Sri Lanka Sign Language with everyday conversation.',
+            'A bidirectional mobile application for Sinhala Sign Language '
+            '— bringing real-time communication and learning to the '
+            'Deaf and Hard of Hearing community in Sri Lanka.',
             style: TextStyle(color: Colors.white.withOpacity(0.55), fontSize: 13, height: 1.6),
           ),
           const SizedBox(height: 32),
@@ -157,9 +161,9 @@ class _LandingScreenState extends State<LandingScreen>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _statItem('29', 'Signs\nSupported'),
+          _statItem('4', 'AI\nModules'),
           _statDivider(),
-          _statItem('88%+', 'Recognition\nAccuracy'),
+          _statItem('30', 'Classroom\nSigns'),
           _statDivider(),
           _statItem('Real\nTime', 'Live\nDetection'),
         ],
@@ -168,8 +172,8 @@ class _LandingScreenState extends State<LandingScreen>
   }
 
   Widget _statItem(String value, String label) => Column(children: [
-        Text(value, style: const TextStyle(
-            color: Color(0xFF00B4D8), fontSize: 22, fontWeight: FontWeight.w800)),
+        Text(value, textAlign: TextAlign.center, style: const TextStyle(
+            color: Color(0xFF00B4D8), fontSize: 22, fontWeight: FontWeight.w800, height: 1.1)),
         const SizedBox(height: 4),
         Text(label, textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10, height: 1.4)),
@@ -179,16 +183,19 @@ class _LandingScreenState extends State<LandingScreen>
       Container(height: 36, width: 1, color: Colors.white10,
           margin: const EdgeInsets.symmetric(horizontal: 8));
 
+  // ════════════════════════════════════════════
+  // HOW GESTURE RECOGNITION WORKS
+  // ════════════════════════════════════════════
   Widget _buildFeatureSection() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 36),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionLabel('HOW IT WORKS'),
+          _sectionLabel('HOW GESTURE RECOGNITION WORKS'),
           const SizedBox(height: 20),
           SizedBox(
-            height: 160,
+            height: 168,
             child: ListView(
               scrollDirection: Axis.horizontal,
               physics        : const BouncingScrollPhysics(),
@@ -197,13 +204,13 @@ class _LandingScreenState extends State<LandingScreen>
                     'Point Camera', 'Aim at the signer\'s hands in good lighting.', const Color(0xFF00B4D8)),
                 const SizedBox(width: 12),
                 _stepCard('02', Icons.back_hand_outlined,
-                    'Hold the Sign', 'Keep the sign steady for about 2 seconds.', const Color(0xFF7B2FBE)),
+                    'Hold the Sign', 'Keep the sign steady for about 3 seconds.', const Color(0xFF7B2FBE)),
                 const SizedBox(width: 12),
-                _stepCard('03', Icons.translate_rounded,
+                _stepCard('03', Icons.filter_alt_outlined,
+                    'Noise Filter', 'Velocity filter removes accidental movements.', const Color(0xFFEF476F)),
+                const SizedBox(width: 12),
+                _stepCard('04', Icons.translate_rounded,
                     'Get Translation', 'See the sign in English and Sinhala.', const Color(0xFF06D6A0)),
-                const SizedBox(width: 12),
-                _stepCard('04', Icons.bar_chart_rounded,
-                    'Check Accuracy', 'View confidence score and top alternatives.', const Color(0xFFFFB703)),
               ],
             ),
           ),
@@ -235,53 +242,81 @@ class _LandingScreenState extends State<LandingScreen>
     );
   }
 
+  // ════════════════════════════════════════════
+  // FOUR INTEGRATED MODULES
+  // ════════════════════════════════════════════
   Widget _buildModulesSection() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 36),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionLabel('APP MODULES'),
+          _sectionLabel('FOUR INTEGRATED AI MODULES'),
           const SizedBox(height: 20),
+
+          // 02 — Hansamana (Available)
           _ModuleCard(
+            moduleNo   : '02',
             icon       : Icons.sign_language,
-            title      : 'Sign Language Recognition',
-            description: 'Real-time detection of 29 classroom SLSL gestures using AI with noise filtering.',
-            tags       : ['AI Powered', '29 Signs', 'CNN + LSTM'],
+            title      : 'Real-Time Gesture Recognition',
+            description: 'Detects 30 classroom SLSL gestures using MediaPipe keypoints '
+                'and CNN+LSTM with a novel velocity-threshold noise filter.',
+            tags       : ['MediaPipe', 'CNN + LSTM', 'Noise Filter'],
             accentColor: const Color(0xFF00B4D8),
             isAvailable: true,
             onTap      : () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const HomeScreen())),
           ),
           const SizedBox(height: 14),
+
+          // 01 — Gimhana
           _ModuleCard(
-            icon: Icons.record_voice_over_rounded, title: 'Text to Sign Language',
-            description: 'Convert spoken or typed text into sign language animations.',
-            tags: ['Text Input', 'Animation', 'Bilingual'],
-            accentColor: const Color(0xFF7B2FBE), isAvailable: false,
-            onTap: () => _showUnavailable(context),
+            moduleNo   : '01',
+            icon       : Icons.record_voice_over_rounded,
+            title      : 'Voice / Text to Sign Language',
+            description: 'Converts Sinhala & Tamil voice or text into 3D animated '
+                'sign language following SLSL sentence structure.',
+            tags       : ['ASR Whisper', '3D Avatar', 'Bilingual'],
+            accentColor: const Color(0xFF7B2FBE),
+            isAvailable: false,
+            onTap      : () => _showUnavailable(context),
           ),
           const SizedBox(height: 14),
+
+          // 03 — Dulmin
           _ModuleCard(
-            icon: Icons.hearing_rounded, title: 'Speech to Text',
-            description: 'Convert spoken language to text for DHH users.',
-            tags: ['Voice Input', 'Real-time', 'Sinhala'],
-            accentColor: const Color(0xFF06D6A0), isAvailable: false,
-            onTap: () => _showUnavailable(context),
+            moduleNo   : '03',
+            icon       : Icons.school_rounded,
+            title      : 'Adaptive Lesson System',
+            description: 'Personalized lessons with placement testing — weak signs '
+                'repeat automatically, difficulty adapts to performance.',
+            tags       : ['Adaptive', 'Quizzes', 'Progress'],
+            accentColor: const Color(0xFF06D6A0),
+            isAvailable: false,
+            onTap      : () => _showUnavailable(context),
           ),
           const SizedBox(height: 14),
+
+          // 04 — Indumini
           _ModuleCard(
-            icon: Icons.forum_rounded, title: 'Community & Learning',
-            description: 'Practice sign language with interactive lessons.',
-            tags: ['Lessons', 'Community', 'Progress'],
-            accentColor: const Color(0xFFFFB703), isAvailable: false,
-            onTap: () => _showUnavailable(context),
+            moduleNo   : '04',
+            icon       : Icons.dashboard_rounded,
+            title      : 'Teacher Dashboard & Authoring',
+            description: 'Lets teachers create and manage sign content and monitor '
+                'student progress for the Sri Lankan curriculum.',
+            tags       : ['Dashboard', 'Authoring', 'Analytics'],
+            accentColor: const Color(0xFFFFB703),
+            isAvailable: false,
+            onTap      : () => _showUnavailable(context),
           ),
         ],
       ),
     );
   }
 
+  // ════════════════════════════════════════════
+  // FOOTER
+  // ════════════════════════════════════════════
   Widget _buildFooter() {
     return Container(
       margin : const EdgeInsets.fromLTRB(24, 0, 24, 40),
@@ -297,7 +332,8 @@ class _LandingScreenState extends State<LandingScreen>
         const Text('Built for Inclusion',
             style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
-        Text('Designed to empower the Deaf and Hard of Hearing community.',
+        Text('Empowering 400,000+ Deaf and Hard of Hearing individuals '
+            'across Sri Lanka with accessible communication.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 12, height: 1.6)),
         const SizedBox(height: 16),
@@ -307,7 +343,7 @@ class _LandingScreenState extends State<LandingScreen>
             color: const Color(0xFF00B4D8).withOpacity(0.08),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: const Text('SLIIT Research Project  •  2026',
+          child: const Text('R26-IT-129  •  SLIIT  •  2026',
               style: TextStyle(color: Color(0xFF90E0EF), fontSize: 11,
                   fontWeight: FontWeight.w600, letterSpacing: 0.5)),
         ),
@@ -324,7 +360,7 @@ class _LandingScreenState extends State<LandingScreen>
 
   void _showUnavailable(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content        : const Text('This module is coming soon'),
+      content        : const Text('This module is developed by another team member'),
       backgroundColor: const Color(0xFF023E8A),
       behavior       : SnackBarBehavior.floating,
       shape          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -333,13 +369,20 @@ class _LandingScreenState extends State<LandingScreen>
   }
 }
 
-// ── Module Card ──────────────────────────────
+// ════════════════════════════════════════════
+// MODULE CARD
+// ════════════════════════════════════════════
 class _ModuleCard extends StatelessWidget {
-  final IconData icon; final String title, description;
-  final List<String> tags; final Color accentColor;
-  final bool isAvailable; final VoidCallback onTap;
+  final String moduleNo;
+  final IconData icon;
+  final String title, description;
+  final List<String> tags;
+  final Color accentColor;
+  final bool isAvailable;
+  final VoidCallback onTap;
 
   const _ModuleCard({
+    required this.moduleNo,
     required this.icon, required this.title, required this.description,
     required this.tags, required this.accentColor,
     required this.isAvailable, required this.onTap,
@@ -359,41 +402,48 @@ class _ModuleCard extends StatelessWidget {
             width: isAvailable ? 1.5 : 1,
           ),
         ),
-        child: Row(children: [
-          Container(
-            width: 52, height: 52,
-            decoration: BoxDecoration(
-              color       : accentColor.withOpacity(isAvailable ? 0.15 : 0.06),
-              borderRadius: BorderRadius.circular(14),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Column(children: [
+            Container(
+              width: 52, height: 52,
+              decoration: BoxDecoration(
+                color       : accentColor.withOpacity(isAvailable ? 0.15 : 0.06),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon,
+                  color: isAvailable ? accentColor : accentColor.withOpacity(0.4), size: 26),
             ),
-            child: Icon(icon,
-                color: isAvailable ? accentColor : accentColor.withOpacity(0.4), size: 26),
-          ),
+            const SizedBox(height: 6),
+            Text(moduleNo, style: TextStyle(
+                color: isAvailable ? accentColor.withOpacity(0.6) : Colors.white24,
+                fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1)),
+          ]),
           const SizedBox(width: 14),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Expanded(child: Text(title, style: TextStyle(
-                  color: isAvailable ? Colors.white : Colors.white.withOpacity(0.45),
-                  fontSize: 14, fontWeight: FontWeight.w700))),
+                  color: isAvailable ? Colors.white : Colors.white.withOpacity(0.5),
+                  fontSize: 14, fontWeight: FontWeight.w700, height: 1.2))),
+              const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: isAvailable ? accentColor.withOpacity(0.15) : Colors.white.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(isAvailable ? 'Available' : 'Soon',
+                child: Text(isAvailable ? 'Available' : 'Module',
                     style: TextStyle(
                         color: isAvailable ? accentColor : Colors.white30,
                         fontSize: 9, fontWeight: FontWeight.w700)),
               ),
             ]),
-            const SizedBox(height: 5),
+            const SizedBox(height: 6),
             Text(description, style: TextStyle(
-                color  : Colors.white.withOpacity(isAvailable ? 0.5 : 0.3),
-                fontSize: 12, height: 1.4),
-                maxLines: 2, overflow: TextOverflow.ellipsis),
+                color  : Colors.white.withOpacity(isAvailable ? 0.55 : 0.35),
+                fontSize: 12, height: 1.45),
+                maxLines: 3, overflow: TextOverflow.ellipsis),
             const SizedBox(height: 10),
-            Wrap(spacing: 6, children: tags.map((tag) => Container(
+            Wrap(spacing: 6, runSpacing: 6, children: tags.map((tag) => Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: accentColor.withOpacity(isAvailable ? 0.1 : 0.04),
@@ -404,9 +454,12 @@ class _ModuleCard extends StatelessWidget {
                       fontSize: 10, fontWeight: FontWeight.w600)),
                 )).toList()),
           ])),
-          const SizedBox(width: 8),
-          Icon(Icons.arrow_forward_ios_rounded,
-              size: 14, color: isAvailable ? accentColor.withOpacity(0.7) : Colors.white12),
+          const SizedBox(width: 6),
+          Padding(
+            padding: const EdgeInsets.only(top: 18),
+            child: Icon(Icons.arrow_forward_ios_rounded,
+                size: 14, color: isAvailable ? accentColor.withOpacity(0.7) : Colors.white12),
+          ),
         ]),
       ),
     );
