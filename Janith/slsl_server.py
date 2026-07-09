@@ -16,9 +16,17 @@ import mediapipe as mp
 import tensorflow as tf
 import base64
 import os
+import sys          # ADDED — needed for path setup below
 import threading
 
 app = Flask(__name__)
+
+# ================================================
+# ADDED — Register Teacher Dashboard Blueprint (Hansika's module)
+# ================================================
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Hansika'))
+from teacher_dashboard_server import teacher_bp
+app.register_blueprint(teacher_bp)
 
 # ================================================
 # PATHS
