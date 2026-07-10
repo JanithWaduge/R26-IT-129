@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'home_screen_janith.dart';
+import 'teacher_dashboard_screen_hansika.dart';
 
 class LandingScreen extends StatefulWidget {
   const LandingScreen({super.key});
@@ -297,7 +298,7 @@ class _LandingScreenState extends State<LandingScreen>
           ),
           const SizedBox(height: 14),
 
-          // 04 — Indumini
+          // 04 — Indumini (now wired to Hansika's Teacher Dashboard implementation)
           _ModuleCard(
             moduleNo   : '04',
             icon       : Icons.dashboard_rounded,
@@ -306,8 +307,9 @@ class _LandingScreenState extends State<LandingScreen>
                 'student progress for the Sri Lankan curriculum.',
             tags       : ['Dashboard', 'Authoring', 'Analytics'],
             accentColor: const Color(0xFFFFB703),
-            isAvailable: false,
-            onTap      : () => _showUnavailable(context),
+            isAvailable: true,
+            onTap      : () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const TeacherDashboardScreenHansika())),
           ),
         ],
       ),
