@@ -1,7 +1,4 @@
 # R26-IT-129
-<<<<<<< HEAD
-our new research
-=======
 Bidirectional Mobile Application for Sinhala Sign Language Communication & Learning
 
 IT22287618 – Gimhana W.A.K
@@ -29,4 +26,3 @@ Teacher Dashboard and Content  Authoring
 
 
 
->>>>>>> 0acd030bfaeb14db0de0082ccbdb4fd1e1b7e211

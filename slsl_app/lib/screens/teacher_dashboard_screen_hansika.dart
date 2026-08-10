@@ -5,6 +5,7 @@ import '../services/teacher_api_service.dart';
 import '../services/teacher_session.dart';
 import 'add_sign_screen_hansika.dart';
 import 'my_submissions_screen_hansika.dart';
+import 'send_to_authority_screen_hansika.dart'; // NEW
 
 class TeacherDashboardScreenHansika extends StatefulWidget {
   const TeacherDashboardScreenHansika({super.key});
@@ -19,10 +20,9 @@ class _TeacherDashboardScreenHansikaState
   List<Map<String, dynamic>> _vocabulary = [];
   bool _loading = true;
 
-  // ── NEW: stats + recent activity + vocab filter state ──
   List<Map<String, dynamic>> _mySubmissions = [];
   String _searchQuery = '';
-  String _categoryFilter = 'all'; // all | noun | verb
+  String _categoryFilter = 'all';
 
   @override
   void initState() {
@@ -31,37 +31,66 @@ class _TeacherDashboardScreenHansikaState
     _loadData();
   }
 
+  // ── CHANGED: now collects email too (required by backend) ──
   Future<void> _ensureTeacherId() async {
-    if (TeacherSession.teacherId != null) return;
-    final controller = TextEditingController();
+    if (TeacherSession.teacherId != null && TeacherSession.teacherEmail != null) return;
+    final nameController = TextEditingController();
+    final emailController = TextEditingController();
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        backgroundColor: kSurface,
-        title: const Text('Teacher Name', style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: 'Enter your name',
-            hintStyle: TextStyle(color: Colors.white38),
-          ),
-        ),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: kPrimary),
-            onPressed: () {
-              TeacherSession.teacherId = controller.text.trim().isEmpty
-                  ? 'teacher_${DateTime.now().millisecondsSinceEpoch}'
-                  : controller.text.trim();
-              Navigator.pop(context);
-              _loadData(); // refresh with the new teacher id
-            },
-            child: const Text('Continue'),
-          ),
-        ],
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          String? error;
+          return AlertDialog(
+            backgroundColor: kSurface,
+            title: const Text('Teacher Details', style: TextStyle(color: Colors.white)),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(
+                controller: nameController,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  hintText: 'Your name',
+                  hintStyle: TextStyle(color: Colors.white38),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  hintText: 'Your email (for approval updates)',
+                  hintStyle: TextStyle(color: Colors.white38),
+                ),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(error, style: const TextStyle(color: kError, fontSize: 12)),
+              ],
+            ]),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: kPrimary),
+                onPressed: () {
+                  final email = emailController.text.trim();
+                  if (!email.contains('@') || !email.contains('.')) {
+                    setDialogState(() => error = 'Please enter a valid email address.');
+                    return;
+                  }
+                  TeacherSession.teacherId = nameController.text.trim().isEmpty
+                      ? 'teacher_${DateTime.now().millisecondsSinceEpoch}'
+                      : nameController.text.trim();
+                  TeacherSession.teacherEmail = email;
+                  Navigator.pop(context);
+                  _loadData();
+                },
+                child: const Text('Continue'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -83,7 +112,6 @@ class _TeacherDashboardScreenHansikaState
     });
   }
 
-  // ── NEW: computed stats from submissions ──
   int get _pendingCount => _mySubmissions.where((s) => s['status'] == 'pending').length;
   int get _approvedCount => _mySubmissions.where((s) => s['status'] == 'approved').length;
   int get _rejectedCount => _mySubmissions.where((s) => s['status'] == 'rejected').length;
@@ -111,21 +139,23 @@ class _TeacherDashboardScreenHansikaState
             children: [
               _buildHeader(context),
               const SizedBox(height: 8),
-              _buildWelcomeBanner(),           // NEW
+              _buildWelcomeBanner(),
               const SizedBox(height: 20),
               _buildServerStatus(),
               const SizedBox(height: 20),
-              _buildStatsGrid(),                // NEW
+              _buildStatsGrid(),
               const SizedBox(height: 24),
-              _sectionLabel('QUICK ACTIONS'),   // NEW label wrapper
+              _sectionLabel('QUICK ACTIONS'),
               const SizedBox(height: 12),
               _buildActionButtons(context),
-              const SizedBox(height: 28),
-              _buildRecentActivitySection(context), // NEW
-              const SizedBox(height: 28),
-              _sectionLabel('SIGN VOCABULARY'), // NEW label wrapper
               const SizedBox(height: 12),
-              _buildVocabularyFilters(),         // NEW
+              _buildSendToAuthorityCard(context), // NEW
+              const SizedBox(height: 28),
+              _buildRecentActivitySection(context),
+              const SizedBox(height: 28),
+              _sectionLabel('SIGN VOCABULARY'),
+              const SizedBox(height: 12),
+              _buildVocabularyFilters(),
               const SizedBox(height: 14),
               _buildVocabularySection(),
               const SizedBox(height: 20),
@@ -136,9 +166,6 @@ class _TeacherDashboardScreenHansikaState
     );
   }
 
-  // ════════════════════════════════════════════
-  // HEADER (unchanged logic, kept as-is)
-  // ════════════════════════════════════════════
   Widget _buildHeader(BuildContext context) {
     return Row(children: [
       IconButton(
@@ -153,9 +180,6 @@ class _TeacherDashboardScreenHansikaState
     ]);
   }
 
-  // ════════════════════════════════════════════
-  // NEW — WELCOME BANNER
-  // ════════════════════════════════════════════
   Widget _buildWelcomeBanner() {
     final name = TeacherSession.teacherId ?? 'Teacher';
     final hour = DateTime.now().hour;
@@ -189,9 +213,6 @@ class _TeacherDashboardScreenHansikaState
     );
   }
 
-  // ════════════════════════════════════════════
-  // SERVER STATUS (unchanged)
-  // ════════════════════════════════════════════
   Widget _buildServerStatus() {
     final color = _serverOnline ? kSuccess : kError;
     return Container(
@@ -211,9 +232,6 @@ class _TeacherDashboardScreenHansikaState
     );
   }
 
-  // ════════════════════════════════════════════
-  // NEW — STATS GRID
-  // ════════════════════════════════════════════
   Widget _buildStatsGrid() {
     return Row(children: [
       Expanded(child: _statCard('Approved', _vocabulary.length.toString(), Icons.check_circle_rounded, kSuccess)),
@@ -246,9 +264,6 @@ class _TeacherDashboardScreenHansikaState
       style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 11,
           fontWeight: FontWeight.w700, letterSpacing: 1.5));
 
-  // ════════════════════════════════════════════
-  // ACTION BUTTONS (unchanged logic — restyled as side-by-side cards)
-  // ════════════════════════════════════════════
   Widget _buildActionButtons(BuildContext context) {
     return Row(children: [
       Expanded(child: _actionCard(
@@ -267,6 +282,30 @@ class _TeacherDashboardScreenHansikaState
             MaterialPageRoute(builder: (_) => const MySubmissionsScreenHansika())),
       )),
     ]);
+  }
+
+  // ── NEW: full-width card linking to the send-to-authority screen ──
+  Widget _buildSendToAuthorityCard(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const SendToAuthorityScreenHansika())),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+        decoration: BoxDecoration(
+          color: kSuccess.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: kSuccess.withOpacity(0.25)),
+        ),
+        child: Row(children: [
+          Icon(Icons.send_rounded, color: kSuccess, size: 22),
+          const SizedBox(width: 12),
+          Expanded(child: Text('Send Pending Batch to Authority',
+              style: TextStyle(color: kSuccess, fontWeight: FontWeight.w700, fontSize: 13))),
+          Icon(Icons.arrow_forward_ios_rounded, color: kSuccess.withOpacity(0.7), size: 14),
+        ]),
+      ),
+    );
   }
 
   Widget _actionCard({required IconData icon, required String label, required Color color, required VoidCallback onTap}) {
@@ -289,9 +328,6 @@ class _TeacherDashboardScreenHansikaState
     );
   }
 
-  // ════════════════════════════════════════════
-  // NEW — RECENT ACTIVITY (last 3 submissions)
-  // ════════════════════════════════════════════
   Widget _buildRecentActivitySection(BuildContext context) {
     final recent = _mySubmissions.take(3).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -344,9 +380,6 @@ class _TeacherDashboardScreenHansikaState
     ]);
   }
 
-  // ════════════════════════════════════════════
-  // NEW — VOCABULARY FILTERS (search + category chips)
-  // ════════════════════════════════════════════
   Widget _buildVocabularyFilters() {
     return Column(children: [
       TextField(
@@ -391,9 +424,6 @@ class _TeacherDashboardScreenHansikaState
     );
   }
 
-  // ════════════════════════════════════════════
-  // VOCABULARY SECTION (same data/logic, now uses _filteredVocabulary)
-  // ════════════════════════════════════════════
   Widget _buildVocabularySection() {
     final filtered = _filteredVocabulary;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

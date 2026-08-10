@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../constants.dart';
 import '../services/teacher_api_service.dart';
 import '../services/teacher_session.dart';
+import 'send_to_authority_screen_hansika.dart'; // NEW
 
 enum _Stage { metadataForm, liveValidation, capturing, processing, result }
 
@@ -174,8 +175,11 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
     setState(() => _statusText = 'Submitting for review...');
 
     final teacherId = TeacherSession.teacherId ?? 'unknown_teacher';
+    // ── CHANGED: teacherEmail now required ──
+    final teacherEmail = TeacherSession.teacherEmail ?? '';
     final result = await TeacherApiService.submitSign(
       teacherId: teacherId,
+      teacherEmail: teacherEmail,
       englishWord: _englishController.text.trim(),
       sinhalaWord: _sinhalaController.text.trim(),
       category: _category,
@@ -396,6 +400,9 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
     final status = result['status'];
     final isRejected = status == 'rejected' || result['error'] != null;
     final message = result['message'] ?? result['error'] ?? 'Something went wrong.';
+    // ── NEW: check if this submission completed a batch of 5 ──
+    final batchReady = result['batch_ready'] == true;
+    final batchCount = result['pending_batch_count'];
 
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -414,7 +421,50 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
         Text(message.toString(),
             style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13),
             textAlign: TextAlign.center),
+
+        // ── NEW: batch-ready banner ──
+        if (!isRejected && batchCount != null) ...[
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: (batchReady ? kSuccess : kWarning).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: (batchReady ? kSuccess : kWarning).withOpacity(0.3)),
+            ),
+            child: Text(
+              batchReady
+                  ? '$batchCount signs collected — ready to send to authority!'
+                  : '$batchCount / 5 signs collected so far',
+              style: TextStyle(
+                  color: batchReady ? kSuccess : kWarning, fontSize: 12, fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+
         const SizedBox(height: 32),
+
+        // ── NEW: show "Send to Authority" button when batch is ready ──
+        if (batchReady)
+          SizedBox(
+            width: double.infinity, height: 52,
+            child: ElevatedButton(
+              onPressed: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const SendToAuthorityScreenHansika())),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kWarning, foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.send_rounded),
+                SizedBox(width: 10),
+                Text('Send Batch to Authority', style: TextStyle(fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          ),
+        if (batchReady) const SizedBox(height: 10),
+
         SizedBox(
           width: double.infinity, height: 52,
           child: ElevatedButton(

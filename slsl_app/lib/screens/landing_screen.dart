@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'home_screen_janith.dart';
 import 'teacher_dashboard_screen_hansika.dart';
+import 'adaptive_dashboard_screen_kisal.dart';
 
 class LandingScreen extends StatefulWidget {
   const LandingScreen({super.key});
@@ -367,7 +368,7 @@ class _LandingScreenState extends State<LandingScreen>
           ),
           const SizedBox(height: 14),
 
-          // 03 — Dulmin
+          // 03 — Kisal (Adaptive Lesson System — now Live)
           _ModuleCard(
             moduleNo: '03',
             icon: Icons.school_rounded,
@@ -376,8 +377,9 @@ class _LandingScreenState extends State<LandingScreen>
                 'repeat automatically, difficulty adapts to performance.',
             tags: const ['Adaptive', 'Quizzes', 'Progress'],
             accentColor: _emerald,
-            isAvailable: false,
-            onTap: () => _showUnavailable(context),
+            isAvailable: true,
+            onTap: () => Navigator.push(
+                context, MaterialPageRoute(builder: (_) => const AdaptiveDashboardScreenKisal())),
           ),
           const SizedBox(height: 14),
 

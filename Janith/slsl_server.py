@@ -29,6 +29,13 @@ from teacher_dashboard_server import teacher_bp
 app.register_blueprint(teacher_bp)
 
 # ================================================
+# ADDED — Register Adaptive Lesson System Blueprint (Kisal's module)
+# ================================================
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'Kisal'))
+from adaptive_lesson_routes_kisal import adaptive_bp
+app.register_blueprint(adaptive_bp)
+
+# ================================================
 # PATHS
 # ================================================
 MODEL_CANDIDATES = [
@@ -364,6 +371,8 @@ if __name__ == '__main__':
     print(f"\n  Flutter kServerUrl:")
     print(f"  http://{local_ip}:5000")
     print(f"\n  Health: http://{local_ip}:5000/health")
+    print(f"  Adaptive quiz: http://{local_ip}:5000/adaptive/quiz/next")
+    print(f"  Adaptive dashboard: http://{local_ip}:5000/adaptive/dashboard/analytics")
     print("=" * 50 + "\n")
 
     app.run(

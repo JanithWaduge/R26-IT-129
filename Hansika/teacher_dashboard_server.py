@@ -3,19 +3,25 @@
 Teacher Dashboard & Content Authoring — Backend
 ------------------------------------------------
 Endpoints:
-  GET  /api/teacher/health
-  GET  /api/vocabulary
-  POST /api/teacher/validate-frame        { image (base64) }
-  POST /api/teacher/submit-sign           { teacher_id, english_word, sinhala_word, category, frames }
-  GET  /api/teacher/my-submissions/<teacher_id>
-  POST /api/authority/approve/<submission_id>
-  POST /api/authority/reject/<submission_id>   { reason }
+  GET    /api/teacher/health
+  GET    /api/vocabulary
+  POST   /api/teacher/validate-frame        { image (base64) }
+  POST   /api/teacher/submit-sign           { teacher_id, teacher_email, english_word, sinhala_word, category, frames }
+  GET    /api/teacher/my-submissions/<teacher_id>
+  GET    /api/teacher/submission/<submission_id>          -- NEW: full detail incl. keypoints, for playback
+  DELETE /api/teacher/delete-submission/<submission_id>    -- NEW
+  GET    /api/teacher/pending-batch                        -- now also returns total_awaiting_decision
+  POST   /api/teacher/send-to-authority     { authority_email }
+  GET    /api/authority/pending
+  POST   /api/authority/approve/<submission_id>   -- emails teacher back
+  POST   /api/authority/reject/<submission_id>    { reason }   -- emails teacher back
+  GET    /authority/review                        -- simple web page, Approve/Reject buttons
 
 Does NOT modify Janith's dataset, model, or server logic.
 Reads his keypoints_clean.csv read-only to check for duplicate signs.
 """
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, render_template_string
 from pymongo import MongoClient
 from bson import ObjectId
 from datetime import datetime
@@ -74,13 +80,13 @@ teacher_mediapipe_lock = threading.Lock()
 # ================================================
 # VALIDATION THRESHOLDS — tune these after testing with real footage
 # ================================================
-MIN_BRIGHTNESS = 60           # grayscale mean, 0-255
+MIN_BRIGHTNESS = 60
 MAX_BRIGHTNESS = 220
-MAX_EDGE_DENSITY = 0.12       # background clutter — fraction of pixels that are edges
-KNEE_VISIBILITY_LIMIT = 0.5   # if knees this visible → too much lower body shown
-SHOULDER_VISIBILITY_MIN = 0.3 # shoulders must be at least this visible
+MAX_EDGE_DENSITY = 0.12
+KNEE_VISIBILITY_LIMIT = 0.5
+SHOULDER_VISIBILITY_MIN = 0.3
 
-BATCH_SIZE_FOR_AUTHORITY_EMAIL = 20
+BATCH_SIZE_FOR_AUTHORITY_EMAIL = 5
 
 # ================================================
 # VALIDATION CHECKS
@@ -109,7 +115,6 @@ def check_body_framing(pose_results):
         return False, "framing", "No person detected. Please position yourself in front of the camera."
 
     lm = pose_results.pose_landmarks.landmark
-    # MediaPipe Pose indices: 11/12 = shoulders, 25/26 = knees
     knee_visibility = max(lm[25].visibility, lm[26].visibility)
     shoulder_visibility = max(lm[11].visibility, lm[12].visibility)
 
@@ -147,56 +152,34 @@ def run_validation(image_bgr):
     return {"valid": True, "message": "Frame passed all validation checks."}
 
 # ================================================
-# EMAIL NOTIFICATION — batch alert to Authority
+# EMAIL — generic sender, used both directions
 # ================================================
-def send_batch_email_to_authority():
+def send_email(to_address, subject, body):
     smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
     smtp_port = int(os.environ.get("SMTP_PORT", 587))
     smtp_user = os.environ.get("SMTP_USER")
     smtp_pass = os.environ.get("SMTP_PASS")
-    authority_email = os.environ.get("AUTHORITY_EMAIL")
 
-    if not all([smtp_user, smtp_pass, authority_email]):
-        print("⚠️  Email not configured — set SMTP_USER, SMTP_PASS, AUTHORITY_EMAIL env vars. Skipping email.")
+    if not all([smtp_user, smtp_pass, to_address]):
+        print(f"⚠️  Email not sent (missing SMTP_USER/SMTP_PASS or recipient). "
+              f"Would have sent to: {to_address} | Subject: {subject}")
         return False
-
-    pending_docs = list(
-        submissions.find({"status": "pending", "notified_authority": False})
-        .limit(BATCH_SIZE_FOR_AUTHORITY_EMAIL)
-    )
-    if not pending_docs:
-        return False
-
-    lines = [
-        f"- {d['english_word']} ({d['category']}) — submitted by {d['teacher_id']} — id: {d['_id']}"
-        for d in pending_docs
-    ]
-    body = "New SLSL sign submissions awaiting review:\n\n" + "\n".join(lines)
 
     msg = MIMEText(body)
-    msg["Subject"] = f"SLSL App: {len(pending_docs)} New Signs Awaiting Approval"
+    msg["Subject"] = subject
     msg["From"] = smtp_user
-    msg["To"] = authority_email
+    msg["To"] = to_address
 
     try:
         with smtplib.SMTP(smtp_host, smtp_port) as server:
             server.starttls()
             server.login(smtp_user, smtp_pass)
             server.send_message(msg)
+        print(f"✅ Email sent to {to_address}: {subject}")
+        return True
     except Exception as e:
-        print(f"❌ Failed to send authority email: {e}")
+        print(f"❌ Failed to send email to {to_address}: {e}")
         return False
-
-    ids = [d["_id"] for d in pending_docs]
-    submissions.update_many({"_id": {"$in": ids}}, {"$set": {"notified_authority": True}})
-    print(f"✅ Authority notified about {len(pending_docs)} pending signs.")
-    return True
-
-
-def check_and_notify_authority():
-    pending_count = submissions.count_documents({"status": "pending", "notified_authority": False})
-    if pending_count >= BATCH_SIZE_FOR_AUTHORITY_EMAIL:
-        send_batch_email_to_authority()
 
 # ================================================
 # ROUTES
@@ -235,11 +218,11 @@ def validate_frame():
 @teacher_bp.route("/api/teacher/submit-sign", methods=["POST"])
 def submit_sign():
     """
-    Request : { teacher_id, english_word, sinhala_word, category, frames: [[63 floats] x 30] }
+    Request : { teacher_id, teacher_email, english_word, sinhala_word, category, frames: [[63 floats] x 30] }
     """
     try:
         data = request.json
-        required_fields = ["teacher_id", "english_word", "sinhala_word", "category", "frames"]
+        required_fields = ["teacher_id", "teacher_email", "english_word", "sinhala_word", "category", "frames"]
         missing = [f for f in required_fields if f not in data]
         if missing:
             return jsonify({"error": f"Missing fields: {missing}"}), 400
@@ -268,18 +251,26 @@ def submit_sign():
 
         doc = {
             "teacher_id": data["teacher_id"],
+            "teacher_email": data["teacher_email"],
             "english_word": label,
             "sinhala_word": data["sinhala_word"],
             "category": data["category"],
-            "keypoint_sequence": data["frames"],  # 30 x 63, matches CNN+LSTM input shape
+            "keypoint_sequence": data["frames"],
             "status": "pending",
             "created_at": datetime.utcnow(),
             "notified_authority": False,
         }
         result = submissions.insert_one(doc)
-        check_and_notify_authority()
 
-        return jsonify({"submission_id": str(result.inserted_id), "status": "pending"}), 201
+        pending_count = submissions.count_documents({"status": "pending", "notified_authority": False})
+        batch_ready = pending_count >= BATCH_SIZE_FOR_AUTHORITY_EMAIL
+
+        return jsonify({
+            "submission_id": str(result.inserted_id),
+            "status": "pending",
+            "pending_batch_count": pending_count,
+            "batch_ready": batch_ready,
+        }), 201
 
     except Exception as e:
         print(f"❌ submit_sign error: {e}")
@@ -294,10 +285,119 @@ def my_submissions(teacher_id):
     return jsonify(docs)
 
 
+# ================================================
+# NEW — Full submission detail (includes keypoint_sequence) for playback
+# ================================================
+@teacher_bp.route("/api/teacher/submission/<submission_id>", methods=["GET"])
+def get_submission_detail(submission_id):
+    try:
+        sub = submissions.find_one({"_id": ObjectId(submission_id)})
+        if not sub:
+            return jsonify({"error": "Submission not found"}), 404
+        sub["_id"] = str(sub["_id"])
+        return jsonify(sub)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ================================================
+# NEW — Delete a submission
+# ================================================
+@teacher_bp.route("/api/teacher/delete-submission/<submission_id>", methods=["DELETE"])
+def delete_submission(submission_id):
+    try:
+        result = submissions.delete_one({"_id": ObjectId(submission_id)})
+        if result.deleted_count == 0:
+            return jsonify({"error": "Submission not found"}), 404
+        return jsonify({"status": "deleted"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @teacher_bp.route("/api/vocabulary", methods=["GET"])
 def get_vocabulary():
     docs = list(vocabulary.find({}, {"_id": 0}))
     return jsonify(docs)
+
+
+@teacher_bp.route("/api/teacher/pending-batch", methods=["GET"])
+def pending_batch():
+    """
+    Response: { count, ready, signs, total_awaiting_decision }
+    - count: signs not yet emailed to authority
+    - total_awaiting_decision: ALL pending signs regardless of email status
+      (i.e. includes ones already emailed but not yet approved/rejected)
+    """
+    pending_docs = list(
+        submissions.find(
+            {"status": "pending", "notified_authority": False},
+            {"english_word": 1, "category": 1, "teacher_id": 1}
+        ).limit(BATCH_SIZE_FOR_AUTHORITY_EMAIL)
+    )
+    count = submissions.count_documents({"status": "pending", "notified_authority": False})
+    total_awaiting_decision = submissions.count_documents({"status": "pending"})
+    for d in pending_docs:
+        d["_id"] = str(d["_id"])
+    return jsonify({
+        "count": count,
+        "ready": count >= BATCH_SIZE_FOR_AUTHORITY_EMAIL,
+        "signs": pending_docs,
+        "total_awaiting_decision": total_awaiting_decision,
+    })
+
+
+@teacher_bp.route("/api/teacher/send-to-authority", methods=["POST"])
+def send_to_authority():
+    """
+    Request : { "authority_email": "someone@example.com" }
+    """
+    try:
+        data = request.json or {}
+        authority_email = data.get("authority_email", "").strip()
+        if not authority_email or "@" not in authority_email:
+            return jsonify({"error": "Please provide a valid email address."}), 400
+
+        pending_docs = list(
+            submissions.find({"status": "pending", "notified_authority": False})
+            .limit(BATCH_SIZE_FOR_AUTHORITY_EMAIL)
+        )
+
+        if not pending_docs:
+            return jsonify({"error": "No pending signs to send."}), 400
+
+        review_link = f"{request.host_url}authority/review"
+
+        lines = [
+            f"- {d['english_word']} ({d['category']}) — submitted by {d['teacher_id']}"
+            for d in pending_docs
+        ]
+        body = (
+            f"New SLSL sign submissions awaiting review ({len(pending_docs)} signs):\n\n"
+            + "\n".join(lines)
+            + f"\n\nReview and approve/reject them here:\n{review_link}"
+        )
+        subject = f"SLSL App: {len(pending_docs)} New Signs Awaiting Approval"
+
+        sent = send_email(authority_email, subject, body)
+
+        if sent:
+            ids = [d["_id"] for d in pending_docs]
+            submissions.update_many(
+                {"_id": {"$in": ids}},
+                {"$set": {"notified_authority": True, "sent_to_authority_email": authority_email,
+                          "notified_at": datetime.utcnow()}}
+            )
+
+        return jsonify({
+            "sent": sent,
+            "count": len(pending_docs),
+            "message": f"Sent {len(pending_docs)} signs to {authority_email}."
+                       if sent else "Email delivery failed — check SMTP configuration. Your signs are still pending and ready to resend."
+        })
+
+    except Exception as e:
+        print(f"❌ send_to_authority error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @teacher_bp.route("/api/authority/pending", methods=["GET"])
@@ -324,6 +424,16 @@ def approve_submission(submission_id):
             "approved_at": datetime.utcnow(),
         })
         submissions.update_one({"_id": sub["_id"]}, {"$set": {"status": "approved"}})
+
+        teacher_email = sub.get("teacher_email")
+        if teacher_email:
+            send_email(
+                teacher_email,
+                f"Your sign '{sub['english_word']}' was approved ✅",
+                f"Good news! Your submitted sign '{sub['english_word']}' "
+                f"has been reviewed and approved. It has been added to the SLSL vocabulary."
+            )
+
         return jsonify({"status": "approved"})
 
     except Exception as e:
@@ -335,13 +445,103 @@ def reject_submission(submission_id):
     try:
         data = request.json or {}
         reason = data.get("reason", "Not specified")
-        result = submissions.update_one(
-            {"_id": ObjectId(submission_id)},
+
+        sub = submissions.find_one({"_id": ObjectId(submission_id)})
+        if not sub:
+            return jsonify({"error": "Submission not found"}), 404
+
+        submissions.update_one(
+            {"_id": sub["_id"]},
             {"$set": {"status": "rejected", "rejection_reason": reason}}
         )
-        if result.matched_count == 0:
-            return jsonify({"error": "Submission not found"}), 404
+
+        teacher_email = sub.get("teacher_email")
+        if teacher_email:
+            send_email(
+                teacher_email,
+                f"Your sign '{sub['english_word']}' was not approved",
+                f"Your submitted sign '{sub['english_word']}' was reviewed and not approved.\n\n"
+                f"Reason: {reason}\n\n"
+                f"You're welcome to record and resubmit this sign."
+            )
+
         return jsonify({"status": "rejected"})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ================================================
+# Simple web page for the Authority to review signs
+# No app install needed — just open this link in any browser.
+# ================================================
+AUTHORITY_PAGE_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+<title>SLSL — Authority Review</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; background:#020818; color:#fff; margin:0; padding:24px; }
+  h1 { font-size: 20px; margin-bottom: 20px; }
+  .card { background:#023E8A33; border:1px solid #00B4D855; border-radius:14px; padding:18px; margin-bottom:14px; }
+  .word { font-size:18px; font-weight:700; }
+  .cat { font-weight:400; color:#ffffff77; font-size:13px; }
+  .sinhala { color:#90E0EF; font-size:15px; margin:6px 0; }
+  .meta { color:#ffffff66; font-size:12px; margin-bottom:14px; }
+  button { padding:10px 18px; border:none; border-radius:8px; font-weight:700; margin-right:10px; cursor:pointer; font-size:14px; }
+  .approve { background:#06D6A0; color:#000; }
+  .reject { background:#EF233C; color:#fff; }
+  .empty { color:#ffffff66; text-align:center; padding:60px 0; }
+  .refresh { background:#00B4D8; color:#fff; margin-bottom:20px; }
+</style>
+</head>
+<body>
+<h1>Pending Sign Submissions ({{ count }})</h1>
+<button class="refresh" onclick="location.reload()">Refresh</button>
+
+{% if signs|length == 0 %}
+  <div class="empty">No pending signs right now.</div>
+{% endif %}
+
+{% for s in signs %}
+<div class="card" id="card-{{ s._id }}">
+  <div class="word">{{ s.english_word }} <span class="cat">({{ s.category }})</span></div>
+  <div class="sinhala">{{ s.sinhala_word }}</div>
+  <div class="meta">Submitted by: {{ s.teacher_id }}</div>
+  <button class="approve" onclick="act('{{ s._id }}','approve')">Approve</button>
+  <button class="reject" onclick="act('{{ s._id }}','reject')">Reject</button>
+</div>
+{% endfor %}
+
+<script>
+async function act(id, action) {
+  let reason = '';
+  if (action === 'reject') {
+    reason = prompt('Reason for rejection (optional):') || 'Not specified';
+  }
+  const url = action === 'approve'
+    ? '/api/authority/approve/' + id
+    : '/api/authority/reject/' + id;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: action === 'reject' ? JSON.stringify({reason: reason}) : null,
+  });
+  if (res.ok) {
+    document.getElementById('card-' + id).remove();
+  } else {
+    alert('Something went wrong. Please try again.');
+  }
+}
+</script>
+</body>
+</html>
+"""
+
+@teacher_bp.route("/authority/review", methods=["GET"])
+def authority_review_page():
+    docs = list(submissions.find({"status": "pending"}))
+    for d in docs:
+        d["_id"] = str(d["_id"])
+    return render_template_string(AUTHORITY_PAGE_TEMPLATE, signs=docs, count=len(docs))

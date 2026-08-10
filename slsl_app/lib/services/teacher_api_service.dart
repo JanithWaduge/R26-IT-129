@@ -55,6 +55,7 @@ class TeacherApiService {
 
   static Future<Map<String, dynamic>> submitSign({
     required String teacherId,
+    required String teacherEmail,
     required String englishWord,
     required String sinhalaWord,
     required String category,
@@ -67,6 +68,7 @@ class TeacherApiService {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'teacher_id': teacherId,
+              'teacher_email': teacherEmail,
               'english_word': englishWord,
               'sinhala_word': sinhalaWord,
               'category': category,
@@ -94,6 +96,29 @@ class TeacherApiService {
     return [];
   }
 
+  // ── NEW: full submission detail (includes keypoint_sequence), for playback ──
+  static Future<Map<String, dynamic>?> getSubmissionDetail(String submissionId) async {
+    try {
+      final res = await http
+          .get(Uri.parse('$kServerUrl/api/teacher/submission/$submissionId'))
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) return jsonDecode(res.body);
+    } catch (_) {}
+    return null;
+  }
+
+  // ── NEW: delete a submission ──
+  static Future<bool> deleteSubmission(String submissionId) async {
+    try {
+      final res = await http
+          .delete(Uri.parse('$kServerUrl/api/teacher/delete-submission/$submissionId'))
+          .timeout(const Duration(seconds: 10));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<List<Map<String, dynamic>>> getVocabulary() async {
     try {
       final res = await http
@@ -104,5 +129,35 @@ class TeacherApiService {
       }
     } catch (_) {}
     return [];
+  }
+
+  // ── CHANGED: now also returns total_awaiting_decision ──
+  static Future<Map<String, dynamic>> getPendingBatch() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$kServerUrl/api/teacher/pending-batch'))
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body);
+      }
+    } catch (_) {}
+    return {'count': 0, 'ready': false, 'signs': [], 'total_awaiting_decision': 0};
+  }
+
+  static Future<Map<String, dynamic>> sendToAuthority(String authorityEmail) async {
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$kServerUrl/api/teacher/send-to-authority'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'authority_email': authorityEmail}),
+          )
+          .timeout(const Duration(seconds: 15));
+      final data = jsonDecode(res.body);
+      data['_statusCode'] = res.statusCode;
+      return data;
+    } catch (e) {
+      return {'error': 'Connection error: $e', '_statusCode': 0};
+    }
   }
 }
