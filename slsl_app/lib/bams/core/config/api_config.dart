@@ -3,7 +3,7 @@ class ApiConfig {
 
   static const String baseUrl = String.fromEnvironment(
      'API_BASE_URL',
-     defaultValue: 'http://10.0.2.2:8000/api/v1',
+     defaultValue: 'http://172.20.10.5:8000/api/v1',
    );
   static String resolveMediaUrl(String mediaUri) {
     final Uri parsedMedia = Uri.parse(mediaUri);
