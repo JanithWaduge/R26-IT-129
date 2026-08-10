@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ report_title }}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f4f6f8; color: #17202a; }
+    header, main, footer { max-width: 1150px; margin: auto; padding: 24px; }
+    header { background: #17324d; color: white; max-width: none; }
+    .panel, .metric { background: white; border-radius: 10px; padding: 20px; margin: 16px 0; box-shadow: 0 2px 8px #0001; }
+    .metrics, .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+    .metric strong { display: block; font-size: 1.8rem; }
+    .warning { background: #fff3cd; border-left: 5px solid #d69e00; }
+    img { width: 100%; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px; border-bottom: 1px solid #ddd; text-align: left; }
+    .synthetic { background: #fde2e2; color: #8b1a1a; font-weight: bold; }
+  </style>
+</head>
+<body>
+<header><h1>{{ report_title }}</h1><p>{{ experiment_name }}</p></header>
+<main>
+  {% if synthetic_model_used %}<div class="panel synthetic">Development-only synthetic model results. Do not interpret as educational effectiveness.</div>{% endif %}
+  <section class="metrics">
+    <div class="metric">Unique learners<strong>{{ total_learners }}</strong></div>
+    <div class="metric">Delayed labels<strong>{{ total_labels }}</strong></div>
+    <div class="metric">Overall retention<strong>{{ "%.1f%%"|format(overall_retention * 100) }}</strong></div>
+    <div class="metric">Interpretation<strong>{% if ready_for_interpretation %}Ready{% else %}Review{% endif %}</strong></div>
+  </section>
+  <section class="panel"><h2>Data-quality warnings</h2>{% if warnings %}<ul>{% for warning in warnings %}<li>{{ warning }}</li>{% endfor %}</ul>{% else %}<p>No warnings detected.</p>{% endif %}</section>
+  <section class="panel"><h2>Scheduler-arm overview</h2>{{ arm_table }}</section>
+  <section class="charts">
+    <div class="panel"><img src="{{ charts.retention }}" alt="Retention chart"></div>
+    <div class="panel"><img src="{{ charts.efficiency }}" alt="Efficiency chart"></div>
+    <div class="panel"><img src="{{ charts.labels }}" alt="Evidence volume chart"></div>
+  </section>
+  <section class="panel"><h2>Pairwise comparisons</h2>{{ comparison_table }}<p>Intervals including zero do not show a clear directional difference.</p></section>
+  {% if hybrid_metrics %}<section class="panel"><h2>Hybrid prediction metrics</h2><pre>{{ hybrid_metrics | tojson(indent=2) }}</pre></section>{% endif %}
+  <section class="panel"><h2>Metadata</h2><p>Generated: {{ source_generated_at }}</p><p>Recall window: {{ label_definition.get('minimum_delay_hours', 'Unknown') }} hours to {{ label_definition.get('maximum_delay_days', 'Unknown') }} days.</p></section>
+</main>
+<footer>Verify SHA-256 checksums before sharing or archiving this report.</footer>
+</body>
+</html>

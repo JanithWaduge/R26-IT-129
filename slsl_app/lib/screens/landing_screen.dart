@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'home_screen_janith.dart';
 import 'teacher_dashboard_screen_hansika.dart';
-import 'adaptive_dashboard_screen_kisal.dart';
+import '../bams/features/authentication/presentation/auth_gate.dart';
 
 class LandingScreen extends StatefulWidget {
   const LandingScreen({super.key});
@@ -368,7 +368,7 @@ class _LandingScreenState extends State<LandingScreen>
           ),
           const SizedBox(height: 14),
 
-          // 03 — Kisal (Adaptive Lesson System — now Live)
+          // 03 — Kisal (Adaptive Lesson System — now Live, BAMS version)
           _ModuleCard(
             moduleNo: '03',
             icon: Icons.school_rounded,
@@ -379,7 +379,7 @@ class _LandingScreenState extends State<LandingScreen>
             accentColor: _emerald,
             isAvailable: true,
             onTap: () => Navigator.push(
-                context, MaterialPageRoute(builder: (_) => const AdaptiveDashboardScreenKisal())),
+                context, MaterialPageRoute(builder: (_) => const AuthGate())),
           ),
           const SizedBox(height: 14),
 

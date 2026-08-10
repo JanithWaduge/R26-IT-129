@@ -1,0 +1,97 @@
+{
+  "synthetic_data": true,
+  "scikit_learn_version": "1.7.2",
+  "selected_candidates": {
+    "logistic_regression": "logistic_c_0_25",
+    "random_forest": "random_forest_depth_12"
+  },
+  "validation_metrics": {
+    "logistic_regression": {
+      "accuracy": 0.6604166666666667,
+      "balanced_accuracy": 0.6604020903140679,
+      "precision": 0.6596638655462185,
+      "recall": 0.6569037656903766,
+      "f1": 0.6582809224318659,
+      "roc_auc": 0.6936578760047918,
+      "average_precision": 0.6825350056868239,
+      "brier_score": 0.2229282318180001,
+      "log_loss": 0.6416560794013416,
+      "confusion_matrix": [
+        [
+          160,
+          81
+        ],
+        [
+          82,
+          157
+        ]
+      ]
+    },
+    "random_forest": {
+      "accuracy": 0.6354166666666666,
+      "balanced_accuracy": 0.6353322106286567,
+      "precision": 0.6391304347826087,
+      "recall": 0.6150627615062761,
+      "f1": 0.6268656716417911,
+      "roc_auc": 0.6910710255386379,
+      "average_precision": 0.6918786312768644,
+      "brier_score": 0.22229427677926133,
+      "log_loss": 0.6352904505866799,
+      "confusion_matrix": [
+        [
+          158,
+          83
+        ],
+        [
+          92,
+          147
+        ]
+      ]
+    }
+  },
+  "test_metrics": {
+    "logistic_regression": {
+      "accuracy": 0.662,
+      "balanced_accuracy": 0.6609488115830611,
+      "precision": 0.658008658008658,
+      "recall": 0.628099173553719,
+      "f1": 0.642706131078224,
+      "roc_auc": 0.7029598308668075,
+      "average_precision": 0.696537777262928,
+      "brier_score": 0.2182208371863415,
+      "log_loss": 0.6260808410180045,
+      "confusion_matrix": [
+        [
+          179,
+          79
+        ],
+        [
+          90,
+          152
+        ]
+      ]
+    },
+    "random_forest": {
+      "accuracy": 0.638,
+      "balanced_accuracy": 0.637821128835928,
+      "precision": 0.6244897959183674,
+      "recall": 0.6322314049586777,
+      "f1": 0.6283367556468172,
+      "roc_auc": 0.6881446601319752,
+      "average_precision": 0.6767499869150595,
+      "brier_score": 0.2232605240045781,
+      "log_loss": 0.6372780683027119,
+      "confusion_matrix": [
+        [
+          166,
+          92
+        ],
+        [
+          89,
+          153
+        ]
+      ]
+    }
+  },
+  "champion_selected_using_validation": "logistic_regression"
+}

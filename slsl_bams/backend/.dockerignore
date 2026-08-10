@@ -1,0 +1,10 @@
+.venv
+.env*
+__pycache__
+.pytest_cache
+outputs
+backups
+storage/private
+*.joblib
+*.csv
+*.zip

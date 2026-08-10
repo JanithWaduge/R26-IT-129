@@ -1,0 +1,96 @@
+{
+  "generated_at": "2026-08-02T05:14:13.301115+00:00",
+  "schema_version": "slsl-receptive-recall-v1",
+  "label_definition": {
+    "target": "future_recall_success",
+    "minimum_delay_hours": 24,
+    "maximum_delay_days": 30,
+    "positive_definition": "First eligible future receptive attempt was correct.",
+    "negative_definition": "First eligible future receptive attempt was incorrect or skipped."
+  },
+  "source": {
+    "source_events": 14,
+    "eligible_receptive_events": 14,
+    "labeled_rows": 0,
+    "unlabeled_rows": 14,
+    "unique_learners": 0,
+    "unique_signs": 0
+  },
+  "class_balance": {
+    "positive_rows": 0,
+    "negative_rows": 0,
+    "positive_rate": 0.0,
+    "negative_rate": 0.0
+  },
+  "splits": {
+    "row_counts": {
+      "train": 0,
+      "validation": 0,
+      "test": 0
+    },
+    "learner_counts": {
+      "train": 0,
+      "validation": 0,
+      "test": 0
+    },
+    "cross_split_learner_overlap": false
+  },
+  "quality_checks": {
+    "duplicate_row_ids": 0,
+    "target_column_in_features": false,
+    "all_targets_after_anchors": true,
+    "raw_database_identifiers_exported": false,
+    "feature_missing_values": {
+      "category_code": 0,
+      "prompt_language": 0,
+      "selection_strategy": 0,
+      "selection_reason": 0,
+      "anchor_outcome": 0,
+      "anchor_correct": 0,
+      "anchor_was_skipped": 0,
+      "anchor_quality_score": 0,
+      "anchor_quality_band": 0,
+      "response_time_ms": 0,
+      "retry_count": 0,
+      "hint_count": 0,
+      "sign_difficulty": 0,
+      "was_due": 0,
+      "days_overdue": 0,
+      "selection_priority": 0,
+      "pre_mastery_score": 0,
+      "post_mastery_score": 0,
+      "pre_total_reviews": 0,
+      "pre_successful_reviews": 0,
+      "pre_failure_count": 0,
+      "pre_average_quality_score": 0,
+      "pre_average_response_time_ms": 0,
+      "hours_since_previous_review": 0,
+      "pre_ease_factor": 0,
+      "post_ease_factor": 0,
+      "pre_interval_days": 0,
+      "post_interval_days": 0,
+      "pre_repetition_count": 0,
+      "post_repetition_count": 0,
+      "pre_lapse_count": 0,
+      "post_lapse_count": 0,
+      "scheduled_delay_hours": 0,
+      "learner_prior_attempts": 0,
+      "learner_prior_accuracy": 0,
+      "learner_prior_average_quality": 0
+    }
+  },
+  "readiness": {
+    "minimum_training_rows": 100,
+    "minimum_rows_per_class": 20,
+    "ready_for_model_training": false,
+    "warnings": [
+      "No delayed-recall labels are available yet.",
+      "The labeled dataset is smaller than the configured training readiness threshold.",
+      "The positive recall class has insufficient examples.",
+      "The recall-failure class has insufficient examples.",
+      "The train split is empty. This is expected when there are very few learners.",
+      "The validation split is empty. This is expected when there are very few learners.",
+      "The test split is empty. This is expected when there are very few learners."
+    ]
+  }
+}
