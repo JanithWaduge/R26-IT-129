@@ -8,14 +8,15 @@ Endpoints:
   POST   /api/teacher/validate-frame        { image (base64) }
   POST   /api/teacher/submit-sign           { teacher_id, teacher_email, english_word, sinhala_word, category, frames }
   GET    /api/teacher/my-submissions/<teacher_id>
-  GET    /api/teacher/submission/<submission_id>          -- NEW: full detail incl. keypoints, for playback
-  DELETE /api/teacher/delete-submission/<submission_id>    -- NEW
-  GET    /api/teacher/pending-batch                        -- now also returns total_awaiting_decision
+  GET    /api/teacher/submission/<submission_id>          -- full detail incl. keypoints, for playback
+  DELETE /api/teacher/delete-submission/<submission_id>
+  GET    /api/teacher/pending-batch                        -- also returns total_awaiting_decision
   POST   /api/teacher/send-to-authority     { authority_email }
   GET    /api/authority/pending
   POST   /api/authority/approve/<submission_id>   -- emails teacher back
   POST   /api/authority/reject/<submission_id>    { reason }   -- emails teacher back
-  GET    /authority/review                        -- simple web page, Approve/Reject buttons
+  GET    /authority/review                        -- web page with Approve/Reject + animated
+                                                       hand-skeleton preview per sign
 
 Does NOT modify Janith's dataset, model, or server logic.
 Reads his keypoints_clean.csv read-only to check for duplicate signs.
@@ -285,9 +286,6 @@ def my_submissions(teacher_id):
     return jsonify(docs)
 
 
-# ================================================
-# NEW — Full submission detail (includes keypoint_sequence) for playback
-# ================================================
 @teacher_bp.route("/api/teacher/submission/<submission_id>", methods=["GET"])
 def get_submission_detail(submission_id):
     try:
@@ -300,9 +298,6 @@ def get_submission_detail(submission_id):
         return jsonify({"error": str(e)}), 500
 
 
-# ================================================
-# NEW — Delete a submission
-# ================================================
 @teacher_bp.route("/api/teacher/delete-submission/<submission_id>", methods=["DELETE"])
 def delete_submission(submission_id):
     try:
@@ -474,6 +469,9 @@ def reject_submission(submission_id):
 # ================================================
 # Simple web page for the Authority to review signs
 # No app install needed — just open this link in any browser.
+# Includes an animated hand-skeleton preview per sign,
+# reconstructed live from the stored MediaPipe keypoints
+# using an HTML5 canvas (no video is stored, only keypoints).
 # ================================================
 AUTHORITY_PAGE_TEMPLATE = """
 <!DOCTYPE html>
@@ -494,6 +492,11 @@ AUTHORITY_PAGE_TEMPLATE = """
   .reject { background:#EF233C; color:#fff; }
   .empty { color:#ffffff66; text-align:center; padding:60px 0; }
   .refresh { background:#00B4D8; color:#fff; margin-bottom:20px; }
+  .skeleton-box { background:#000000aa; border-radius:12px; margin-bottom:14px; overflow:hidden; }
+  canvas { display:block; width:100%; height:220px; }
+  .play-controls { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .play-btn { background:#00B4D8; color:#fff; padding:8px 14px; font-size:13px; margin:0; }
+  .frame-label { color:#ffffff77; font-size:12px; }
 </style>
 </head>
 <body>
@@ -509,12 +512,97 @@ AUTHORITY_PAGE_TEMPLATE = """
   <div class="word">{{ s.english_word }} <span class="cat">({{ s.category }})</span></div>
   <div class="sinhala">{{ s.sinhala_word }}</div>
   <div class="meta">Submitted by: {{ s.teacher_id }}</div>
+
+  <div class="skeleton-box">
+    <canvas id="canvas-{{ s._id }}" width="400" height="220"></canvas>
+  </div>
+  <div class="play-controls">
+    <button class="play-btn" onclick="togglePlay('{{ s._id }}')" id="playbtn-{{ s._id }}">⏸ Pause</button>
+    <span class="frame-label" id="framelabel-{{ s._id }}">Frame 1 / 30</span>
+  </div>
+
   <button class="approve" onclick="act('{{ s._id }}','approve')">Approve</button>
   <button class="reject" onclick="act('{{ s._id }}','reject')">Reject</button>
 </div>
 {% endfor %}
 
 <script>
+const HAND_CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [0,9],[9,10],[10,11],[11,12],
+  [0,13],[13,14],[14,15],[15,16],
+  [0,17],[17,18],[18,19],[19,20],
+  [5,9],[9,13],[13,17],
+];
+
+// Holds { id: { keypoints, frame, playing, canvas, ctx } } for every card
+const players = {};
+
+function initPlayer(id, keypointData) {
+  const canvas = document.getElementById('canvas-' + id);
+  const ctx = canvas.getContext('2d');
+  players[id] = { keypoints: keypointData, frame: 0, playing: true, canvas, ctx };
+}
+
+function drawFrame(id) {
+  const p = players[id];
+  if (!p) return;
+  const kp = p.keypoints[p.frame];
+  if (!kp || kp.length < 63) return;
+
+  const { ctx, canvas } = p;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const points = [];
+  for (let i = 0; i < 21; i++) {
+    const x = kp[i*3] * canvas.width;
+    const y = kp[i*3+1] * canvas.height;
+    points.push([x, y]);
+  }
+
+  ctx.strokeStyle = '#00B4D8';
+  ctx.lineWidth = 2.5;
+  HAND_CONNECTIONS.forEach(([a,b]) => {
+    ctx.beginPath();
+    ctx.moveTo(points[a][0], points[a][1]);
+    ctx.lineTo(points[b][0], points[b][1]);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = '#06D6A0';
+  points.forEach(([x,y]) => {
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  const label = document.getElementById('framelabel-' + id);
+  if (label) label.textContent = 'Frame ' + (p.frame + 1) + ' / ' + p.keypoints.length;
+}
+
+function togglePlay(id) {
+  const p = players[id];
+  if (!p) return;
+  p.playing = !p.playing;
+  const btn = document.getElementById('playbtn-' + id);
+  if (btn) btn.textContent = p.playing ? '⏸ Pause' : '▶ Play';
+}
+
+setInterval(() => {
+  Object.keys(players).forEach(id => {
+    const p = players[id];
+    if (p.playing && p.keypoints && p.keypoints.length > 0) {
+      drawFrame(id);
+      p.frame = (p.frame + 1) % p.keypoints.length;
+    }
+  });
+}, 130);
+
+{% for s in signs %}
+initPlayer('{{ s._id }}', {{ s.keypoint_sequence | tojson }});
+{% endfor %}
+
 async function act(id, action) {
   let reason = '';
   if (action === 'reject') {
@@ -529,6 +617,7 @@ async function act(id, action) {
     body: action === 'reject' ? JSON.stringify({reason: reason}) : null,
   });
   if (res.ok) {
+    delete players[id];
     document.getElementById('card-' + id).remove();
   } else {
     alert('Something went wrong. Please try again.');
