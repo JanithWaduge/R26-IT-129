@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/network/authenticated_api_client.dart';
+import '../../../shared/widgets/sign_video_player.dart';
 import '../data/vocabulary_api.dart';
 import '../domain/curriculum_competency.dart';
 import '../domain/sign_detail.dart';
@@ -107,24 +108,20 @@ class _SignDetailPageState extends State<SignDetailPage> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        Container(
-          height: 220,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(),
-          ),
-          child: sign.media.isAvailable
-              ? const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.play_circle, size: 72),
-                      SizedBox(height: 12),
-                      Text('Media reference available'),
-                    ],
-                  ),
-                )
-              : const Center(
+        // FIXED: this used to be a static Icon + "Media reference available"
+        // text with no actual playback behind it. SignVideoPlayer already
+        // exists in the codebase (and is used correctly in the quiz
+        // screens) - it just was never wired in here. It manages its own
+        // sizing/border via AspectRatio, so no outer Container needed.
+        sign.media.isAvailable
+            ? SignVideoPlayer(mediaUri: sign.media.uri!)
+            : Container(
+                height: 220,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(),
+                ),
+                child: const Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -138,7 +135,7 @@ class _SignDetailPageState extends State<SignDetailPage> {
                     ],
                   ),
                 ),
-        ),
+              ),
         const SizedBox(height: 24),
         Text(
           sign.meanings.forLanguage(widget.preferredLanguage),
