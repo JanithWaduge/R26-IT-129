@@ -59,29 +59,87 @@ AUG_FACTOR      = 4
 def vel_sigma(v): return v / 0.7979
 
 # ================================================
-# NOISE FILTER — Applied at inference only
+# NORMALIZATION — must match extract_keypoints.py / slsl_server.py
+# ADDED: the model is now trained on wrist-centered, scale-normalized
+# keypoints. Synthetic "accidental" test data must go through the
+# SAME transform, or it's being evaluated in a coordinate space the
+# model never saw — which is what caused the 98%/98% saturation.
 # ================================================
-def apply_noise_filter(sequence, threshold=NOISE_THRESHOLD):
+def normalize_keypoints(kp):
+    arr = np.array(kp, dtype=np.float32).reshape(21, 3)
+    if np.sum(np.abs(arr)) < 0.01:
+        return kp
+    wrist = arr[0].copy()
+    arr = arr - wrist
+    scale = np.linalg.norm(arr[9])
+    if scale < 1e-6:
+        scale = 1.0
+    arr = arr / scale
+    return arr.flatten().tolist()
+
+# ================================================
+# NOISE FILTER — CANONICAL VERSION
+# Matches extract_keypoints.py exactly (the function that produced
+# the training data), NOT a separate truncate/pad variant. This is
+# what makes this experiment actually test the filter your model
+# was trained around, and what slsl_server.py must also match.
+#
+# Shape contract: output is always 15 "active" frames followed by
+# zero-padding up to SEQUENCE_LENGTH (30) — the same 15+15 structure
+# used when keypoints_data.csv / keypoints_clean.csv were built.
+# ================================================
+CAPTURE_FRAMES = 15  # must match extract_keypoints.py
+
+def apply_noise_filter(sequence, threshold=None):
     """
-    Remove frames with velocity <= threshold.
-    Used ONLY at inference time in Model B.
+    threshold=None looks up the current value of the module-level
+    NOISE_THRESHOLD at CALL time (not def time), so the auto-
+    calibration step below (Step 1) actually takes effect. A default
+    argument bound directly to NOISE_THRESHOLD would freeze the value
+    from when this function was defined, ignoring later recalibration.
+
+    Step 1: velocity-filter the raw sequence (removes low-motion frames,
+             same pairwise comparison as extract_keypoints.py).
+    Step 2: drop near-zero (no-hand) frames from what's left.
+    Step 3: sample down to CAPTURE_FRAMES valid frames (or upsample if
+             fewer), then zero-pad to SEQUENCE_LENGTH.
+    Returns (flat_sequence, frames_removed_by_velocity_filter).
     """
+    if threshold is None:
+        threshold = NOISE_THRESHOLD
+
     arr = np.array(sequence, dtype=np.float32)
+
+    # Step 1 — velocity filter on the raw sequence
     if len(arr) < 2:
-        return arr.tolist(), 0
-    filtered = [arr[0].tolist()]
-    removed  = 0
-    for i in range(1, len(arr)):
-        v = float(np.mean(np.abs(arr[i] - arr[i - 1])))
-        if v > threshold:
-            filtered.append(arr[i].tolist())
-        else:
-            removed += 1
-    if len(filtered) == 0:
+        velocity_filtered = arr.tolist()
+        removed = 0
+    else:
+        velocity_filtered = [arr[0].tolist()]
+        removed = 0
+        for i in range(1, len(arr)):
+            v = float(np.mean(np.abs(arr[i] - arr[i - 1])))
+            if v > threshold:
+                velocity_filtered.append(arr[i].tolist())
+            else:
+                removed += 1
+
+    # Step 2 — drop near-zero (no-hand) frames
+    valid = [f for f in velocity_filtered if np.sum(np.abs(f)) > 0.01]
+
+    if len(valid) == 0:
         return [[0.0] * 63] * SEQUENCE_LENGTH, removed
-    if len(filtered) >= SEQUENCE_LENGTH:
-        return filtered[:SEQUENCE_LENGTH], removed
-    return filtered + [[0.0] * 63] * (SEQUENCE_LENGTH - len(filtered)), removed
+
+    # Step 3 — sample to CAPTURE_FRAMES, then zero-pad to SEQUENCE_LENGTH
+    if len(valid) >= CAPTURE_FRAMES:
+        indices = np.linspace(0, len(valid) - 1, CAPTURE_FRAMES, dtype=int)
+        sampled = [valid[i] for i in indices]
+    else:
+        indices = np.linspace(0, len(valid) - 1, CAPTURE_FRAMES)
+        sampled = [valid[int(round(i))] for i in indices]
+
+    padding = [[0.0] * 63] * (SEQUENCE_LENGTH - CAPTURE_FRAMES)
+    return sampled + padding, removed
 
 # ================================================
 # MODEL — Same architecture for both A and B
@@ -132,29 +190,53 @@ for seq in X:
     for i in range(1, len(seq)):
         if np.sum(np.abs(seq[i])) > 0.01:
             vr.append(float(np.mean(np.abs(seq[i] - seq[i-1]))))
-print(f"      Real sign velocity — mean: {np.mean(vr):.4f}")
+vr_mean, vr_std = float(np.mean(vr)), float(np.std(vr))
+print(f"      Real sign velocity — mean: {vr_mean:.4f}, std: {vr_std:.4f}")
 
 # ================================================
-# STEP 2 — AUGMENT (same for both models)
+# AUTO-CALIBRATE NOISE_THRESHOLD — CRITICAL FIX
+# The hardcoded NOISE_THRESHOLD=0.02 was tuned for raw (un-normalized)
+# coordinates. Now that keypoints are wrist-centered and scale-
+# normalized, the velocity scale is different, so a stale threshold
+# either filters almost nothing or almost everything — which is what
+# caused Model A and Model B to converge to the same ~98% FPR.
+#
+# Heuristic: frames moving slower than 30% of the typical REAL signing
+# velocity are treated as static/noise. This is a starting point —
+# tune the 0.3 multiplier against your own FPR/accuracy trade-off.
 # ================================================
-print(f"\n[2/7] Augmenting (x{AUG_FACTOR})...")
+NOISE_THRESHOLD = round(vr_mean * 0.3, 5)
+print(f"      ⚙️  Auto-calibrated NOISE_THRESHOLD: {NOISE_THRESHOLD}")
+print(f"      ⚠️  COPY THIS VALUE into extract_keypoints.py and "
+      f"slsl_server.py (NOISE_THRESHOLD constant) to keep all three "
+      f"files in sync, then re-run extract_keypoints.py once more.")
+
+# ================================================
+# STEP 2 — SPLIT FIRST (CRITICAL FIX)
+# Splitting must happen BEFORE augmentation, otherwise near-duplicate
+# noisy copies of the same recording can land in both train and test,
+# leaking information and inflating the reported accuracy/FPR numbers.
+# ================================================
+print(f"\n[2/7] Splitting raw data (80/20) BEFORE augmentation...")
+X_train_raw, X_test, y_train_raw, y_test = train_test_split(
+    X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded)
+print(f"      Train (raw): {len(X_train_raw)}, Test (untouched): {len(X_test)}")
+
+# ================================================
+# STEP 3 — AUGMENT training split only
+# X_test/y_test are never augmented and never touched again.
+# ================================================
+print(f"\n[3/7] Augmenting training data (x{AUG_FACTOR})...")
 Xa, ya = [], []
-for i in range(len(X)):
-    Xa.append(X[i]); ya.append(y_encoded[i])
+for i in range(len(X_train_raw)):
+    Xa.append(X_train_raw[i]); ya.append(y_train_raw[i])
     for _ in range(AUG_FACTOR - 1):
-        noise = np.random.normal(0, 0.01, X[i].shape).astype(np.float32)
-        Xa.append(X[i] + noise); ya.append(y_encoded[i])
-X_aug = np.array(Xa, dtype=np.float32)
-y_aug = np.array(ya)
-print(f"      {len(X_aug)} samples")
-
-# ================================================
-# STEP 3 — SPLIT (same split for both models)
-# ================================================
-print(f"\n[3/7] Splitting (80/20)...")
-X_train, X_test, y_train, y_test = train_test_split(
-    X_aug, y_aug, test_size=0.2, random_state=42, stratify=y_aug)
-print(f"      Train: {len(X_train)}, Test: {len(X_test)}")
+        noise = np.random.normal(0, 0.01, X_train_raw[i].shape).astype(np.float32)
+        Xa.append(X_train_raw[i] + noise); ya.append(y_train_raw[i])
+X_train = np.array(Xa, dtype=np.float32)
+y_train = np.array(ya)
+print(f"      {len(X_train)} training samples "
+      f"(test set stays at {len(X_test)}, untouched and unaugmented)")
 
 # ================================================
 # STEP 4 — ACCIDENTAL DATA
@@ -163,6 +245,13 @@ print(f"      Train: {len(X_train)}, Test: {len(X_test)}")
 print(f"\n[4/7] Generating {N_ACCIDENTAL} accidental sequences...")
 
 def make_accidental():
+    """
+    Generates a raw (pre-normalization) synthetic hand-jitter sequence
+    in camera-coordinate space — simulating real accidental hand
+    movement as MediaPipe would report it. Then normalizes each frame
+    exactly as extract_keypoints.py / slsl_server.py do, so this data
+    is evaluated in the SAME coordinate space the model was trained on.
+    """
     seq  = []
     base = np.random.uniform(0.2, 0.8, 63).astype(np.float32)
     for j in range(SEQUENCE_LENGTH):
@@ -172,7 +261,7 @@ def make_accidental():
             sigma = vel_sigma(np.random.uniform(0.003, 0.010))
         step = np.random.normal(0, sigma, 63).astype(np.float32)
         base = np.clip(base + step, 0, 1)
-        seq.append(base.copy().tolist())
+        seq.append(normalize_keypoints(base.copy().tolist()))
     return seq
 
 accidental_data = [make_accidental() for _ in range(N_ACCIDENTAL)]
@@ -247,10 +336,11 @@ for seq in accidental_data:
 conf_a = np.array(conf_a_list, dtype=np.float32)
 fpr_a  = fp_a / N_ACCIDENTAL
 out_a  = np.array(out_a)
-acc_a  = shared_acc  # same model
+acc_a  = shared_acc  # Model A never filters, so this IS its real accuracy
 
 print(f"  ✅ Model A (No Filter) — FP: {fp_a}/{N_ACCIDENTAL} ({fpr_a*100:.2f}%)")
 print(f"  ✅ Model A — Mean conf on accidentals: {np.mean(conf_a):.4f}")
+print(f"  ✅ Model A — Sign Accuracy (real test set, unfiltered): {acc_a*100:.2f}%")
 
 # ================================================
 # STEP 7 — MODEL B: Filter at inference
@@ -276,12 +366,28 @@ for seq in accidental_data:
 conf_b     = np.array(conf_b_list, dtype=np.float32)
 fpr_b      = fp_b / N_ACCIDENTAL
 out_b      = np.array(out_b)
-acc_b      = shared_acc  # same model
 avg_removed_inf = np.mean(frames_removed_inf)
+
+# ================================================
+# CRITICAL FIX — actually measure Model B's real-sign accuracy
+# Previously this was just `acc_b = shared_acc`, which silently
+# reused Model A's number and never tested what the filter does to
+# genuine signs. Here we run every REAL test sequence through the
+# SAME filter Model B uses at inference, then evaluate on that.
+# This is the honest accuracy-vs-FPR trade-off for your report.
+# ================================================
+X_test_filtered = np.array(
+    [apply_noise_filter(seq)[0] for seq in X_test],
+    dtype=np.float32
+)
+_, acc_b = shared_model.evaluate(X_test_filtered, y_test, verbose=0)
 
 print(f"  ✅ Model B (With Filter) — FP: {fp_b}/{N_ACCIDENTAL} ({fpr_b*100:.2f}%)")
 print(f"  ✅ Model B — Mean conf on accidentals: {np.mean(conf_b):.4f}")
 print(f"  ✅ Avg frames removed from accidentals: {avg_removed_inf:.1f}/30")
+print(f"  ✅ Model B — Sign Accuracy (real test set, FILTERED): {acc_b*100:.2f}%")
+print(f"  ℹ️  Accuracy change from filtering real signs: "
+      f"{(acc_b - acc_a)*100:+.2f} percentage points")
 
 # ================================================
 # STATISTICAL ANALYSIS
@@ -360,10 +466,10 @@ print("="*60)
 # SAVE
 # ================================================
 rows = [
-    {'Metric': 'Shared Model Accuracy (%)',
+    {'Metric': 'Sign Accuracy on Real Test Set (%)',
      'Model A (Baseline)': f"{acc_a*100:.2f}",
      'Model B (Proposed)': f"{acc_b*100:.2f}",
-     'Difference': '0.00'},
+     'Difference': f"{acc_b*100 - acc_a*100:+.2f}"},
     {'Metric': f'False Positives / {N_ACCIDENTAL}',
      'Model A (Baseline)': fp_a, 'Model B (Proposed)': fp_b,
      'Difference': fp_b - fp_a},

@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report
+from sklearn.utils.class_weight import compute_class_weight
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Conv1D, MaxPooling1D, BatchNormalization
@@ -49,20 +50,55 @@ print(sign_counts.head(TOP_N_SIGNS).to_string())
 print(f"\n✅ Final samples: {len(df)}")
 
 # ================================================
-# DATA AUGMENTATION — samples multiply කරන්න
+# PREPARE X, y (RAW — no augmentation yet)
 # ================================================
-print("\n🔄 Augmenting data...")
+feature_cols = [c for c in df.columns if c != 'label']
+X_raw = df[feature_cols].values.astype(np.float32)
+y_raw = df['label'].values
+
+# Reshape → (samples, 30 frames, 63 features)
+X_raw = X_raw.reshape(-1, 30, 63)
+
+# Label encode
+le = LabelEncoder()
+y_encoded = le.fit_transform(y_raw)
+num_classes = len(le.classes_)
+
+print(f"✅ Classes: {num_classes}")
+
+# Save label encoder classes
+np.save(os.path.join(MODEL_PATH, 'classes.npy'), le.classes_)
+print(f"✅ Classes saved!")
+
+# ================================================
+# TRAIN/TEST SPLIT — done BEFORE augmentation
+# CRITICAL FIX: augmenting before splitting lets near-duplicate
+# copies of the same recording end up in both train and test,
+# which leaks information and inflates test accuracy. Splitting
+# the RAW data first guarantees the test set only ever contains
+# recordings the model has never seen in any form.
+# ================================================
+print("\n✂️  Splitting raw data (80/20) BEFORE augmentation...")
+X_train_raw, X_test, y_train_raw, y_test = train_test_split(
+    X_raw, y_encoded,
+    test_size=0.2,
+    random_state=42,
+    stratify=y_encoded
+)
+print(f"✅ Train (raw): {len(X_train_raw)}, Test (untouched): {len(X_test)}")
+
+# ================================================
+# DATA AUGMENTATION — applied ONLY to the training split
+# Test set (X_test/y_test) is never augmented and never touched again.
+# ================================================
+print("\n🔄 Augmenting training data...")
 
 augmented_X = []
 augmented_y = []
 
-feature_cols = [c for c in df.columns if c != 'label']
-X_raw = df[feature_cols].values
-y_raw = df['label'].values
-
-for i in range(len(X_raw)):
-    seq = X_raw[i]
-    label = y_raw[i]
+for i in range(len(X_train_raw)):
+    seq = X_train_raw[i]
+    label = y_train_raw[i]
 
     # Original
     augmented_X.append(seq)
@@ -83,40 +119,27 @@ for i in range(len(X_raw)):
     augmented_X.append(seq + noise2)
     augmented_y.append(label)
 
-X_aug = np.array(augmented_X, dtype=np.float32)
-y_aug = np.array(augmented_y)
+X_train = np.array(augmented_X, dtype=np.float32)
+y_train = np.array(augmented_y)
 
-print(f"✅ After augmentation: {len(X_aug)} samples")
-
-# ================================================
-# PREPARE X, y
-# ================================================
-# Reshape → (samples, 30 frames, 63 features)
-X = X_aug.reshape(-1, 30, 63)
-y = y_aug
-
-# Label encode
-le = LabelEncoder()
-y_encoded = le.fit_transform(y)
-num_classes = len(le.classes_)
-
-print(f"✅ Classes: {num_classes}")
-
-# Save label encoder classes
-np.save(os.path.join(MODEL_PATH, 'classes.npy'), le.classes_)
-print(f"✅ Classes saved!")
+print(f"✅ After augmentation: {len(X_train)} training samples "
+      f"(test set stays at {len(X_test)}, untouched and unaugmented)")
 
 # ================================================
-# TRAIN/TEST SPLIT
+# CLASS WEIGHTS — ADDED
+# Some signs (e.g. Copying, Study, Teacher via dataset2) may have
+# noticeably more samples than others. Without this, the model can
+# lean toward whichever signs are best represented. Computed on the
+# augmented TRAINING labels only — the test set is unaffected.
 # ================================================
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y_encoded,
-    test_size=0.2,
-    random_state=42,
-    stratify=y_encoded  # augmentation ගෙදී samples enough නිසා stratify back
+class_weight_values = compute_class_weight(
+    class_weight='balanced',
+    classes=np.unique(y_train),
+    y=y_train
 )
-
-print(f"✅ Train: {len(X_train)}, Test: {len(X_test)}")
+class_weight_dict = {int(c): float(w) for c, w in zip(np.unique(y_train), class_weight_values)}
+print(f"\n⚖️  Class weights computed for {len(class_weight_dict)} signs "
+      f"(min={min(class_weight_dict.values()):.2f}, max={max(class_weight_dict.values()):.2f})")
 
 # ================================================
 # MODEL — Improved CNN + LSTM
@@ -191,6 +214,7 @@ history = model.fit(
     epochs=100,
     batch_size=32,
     validation_data=(X_test, y_test),
+    class_weight=class_weight_dict,
     callbacks=callbacks
 )
 

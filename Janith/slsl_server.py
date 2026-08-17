@@ -52,16 +52,27 @@ if MODEL_PATH is None:
     raise FileNotFoundError(f"TFLite model not found. Checked: {MODEL_CANDIDATES}")
 
 # ================================================
-# SIGN LABELS (30 signs — matches constants.dart)
+# SIGN LABELS — loaded from the trained model itself
+# CHANGED: previously hardcoded. Now loaded from classes.npy (saved by
+# train_model.py's LabelEncoder), so if retraining ever changes which
+# 30 signs make the cut, or their order, the server automatically
+# stays in sync instead of silently mislabeling predictions.
 # ================================================
-SIGN_LABELS = [
-    'Allocate', 'Answer', 'Answer Properly', 'Answer Sheet', 'Ask Question',
-    'Attend', 'Attending', 'Calculate', 'Cancel', 'Collaborating',
-    'Collect', 'Comparing', 'Concentrate', 'Continuing', 'Coordinate',
-    'Copying', 'Correct Mistake', 'Describe', 'Discuss', 'Discuss Topic',
-    'Distribute', 'Documenting', 'Grade', 'Practice', 'Research',
-    'Review', 'Study', 'Support', 'Teacher', 'Whiteboard Marker',
-]
+_CLASSES_PATH = os.path.join(os.path.dirname(MODEL_PATH), 'classes.npy')
+if os.path.exists(_CLASSES_PATH):
+    SIGN_LABELS = np.load(_CLASSES_PATH, allow_pickle=True).tolist()
+else:
+    # Fallback if classes.npy hasn't been generated yet — matches the
+    # 30 classroom signs as of the last known training run.
+    SIGN_LABELS = [
+        'Allocate', 'Answer', 'Answer Properly', 'Answer Sheet', 'Ask Question',
+        'Attend', 'Attending', 'Calculate', 'Cancel', 'Collaborating',
+        'Collect', 'Comparing', 'Concentrate', 'Continuing', 'Coordinate',
+        'Copying', 'Correct Mistake', 'Describe', 'Discuss', 'Discuss Topic',
+        'Distribute', 'Documenting', 'Grade', 'Practice', 'Research',
+        'Review', 'Study', 'Support', 'Teacher', 'Whiteboard Marker',
+    ]
+    print(f"⚠️  classes.npy not found at {_CLASSES_PATH} — using fallback SIGN_LABELS")
 
 # ================================================
 # SINHALA TRANSLATIONS
@@ -130,36 +141,82 @@ print("✅ MediaPipe ready (thread-safe)")
 
 # ================================================
 # NOISE FILTER — Research Contribution
+# FIXED: now matches extract_keypoints.py exactly (the function that
+# produced the training data), so inference-time input has the SAME
+# shape the model was trained on: CAPTURE_FRAMES (15) "active" frames
+# followed by zero-padding up to SEQUENCE_LENGTH (30).
+# Previous version interpolated valid frames across all 30 slots,
+# which never matched the 15-real+15-zero training format — that
+# mismatch is fixed here.
 # ================================================
+CAPTURE_FRAMES = 15  # must match extract_keypoints.py / training data shape
+
 def apply_noise_filter(sequence, threshold=NOISE_THRESHOLD):
     """
-    Step 1: Remove zero frames (no hand detected)
-    Step 2: Remove low-velocity frames (accidental movements)
-    Step 3: Interpolate valid frames to SEQUENCE_LENGTH
+    Step 1: Velocity-filter the raw sequence (removes low-motion /
+             accidental-movement frames), same pairwise comparison
+             used when the training CSV was built.
+    Step 2: Remove near-zero (no hand detected) frames from what's left.
+    Step 3: Sample down to CAPTURE_FRAMES valid frames (or upsample if
+             fewer than that), then zero-pad to SEQUENCE_LENGTH.
     """
-    # Step 1: valid frames only
-    valid = [f for f in sequence if np.sum(np.abs(f)) > 0.01]
+    # Step 1: velocity filter on the raw sequence
+    if len(sequence) < 2:
+        velocity_filtered = list(sequence)
+    else:
+        velocity_filtered = [sequence[0]]
+        for i in range(1, len(sequence)):
+            velocity = np.mean(np.abs(
+                np.array(sequence[i]) - np.array(sequence[i - 1])
+            ))
+            if velocity > threshold:
+                velocity_filtered.append(sequence[i])
+
+    # Step 2: remove near-zero (no-hand) frames
+    valid = [f for f in velocity_filtered if np.sum(np.abs(f)) > 0.01]
 
     if len(valid) == 0:
         return [[0.0] * 63] * SEQUENCE_LENGTH
 
-    # Step 2: velocity filter
-    if len(valid) >= 2:
-        filtered = [valid[0]]
-        for i in range(1, len(valid)):
-            velocity = np.mean(np.abs(
-                np.array(valid[i]) - np.array(valid[i - 1])
-            ))
-            if velocity > threshold:
-                filtered.append(valid[i])
-        valid = filtered if len(filtered) > 3 else valid
-
-    # Step 3: interpolate to SEQUENCE_LENGTH
-    if len(valid) >= SEQUENCE_LENGTH:
-        return valid[:SEQUENCE_LENGTH]
+    # Step 3: sample to CAPTURE_FRAMES, then zero-pad to SEQUENCE_LENGTH
+    if len(valid) >= CAPTURE_FRAMES:
+        indices = np.linspace(0, len(valid) - 1, CAPTURE_FRAMES, dtype=int)
+        sampled = [valid[i] for i in indices]
     else:
-        indices = np.linspace(0, len(valid) - 1, SEQUENCE_LENGTH)
-        return [valid[int(round(i))] for i in indices]
+        indices = np.linspace(0, len(valid) - 1, CAPTURE_FRAMES)
+        sampled = [valid[int(round(i))] for i in indices]
+
+    padding = [[0.0] * 63] * (SEQUENCE_LENGTH - CAPTURE_FRAMES)
+    return sampled + padding
+
+# ================================================
+# NORMALIZATION — Wrist-centered, scale-invariant
+# ADDED: must match extract_keypoints.py exactly, since it's applied
+# to the training data. If this function and the one in
+# extract_keypoints.py ever drift apart, training and serving will
+# see different coordinate systems again (same class of bug as the
+# noise-filter shape mismatch fixed earlier).
+# ================================================
+def normalize_keypoints(kp):
+    """
+    kp: flat list of 63 floats (21 MediaPipe hand landmarks x,y,z).
+    Step 1: translate so the wrist (landmark 0) becomes the origin.
+    Step 2: scale by the wrist→middle-finger-MCP (landmark 9) distance,
+             so hand size in frame no longer matters.
+    """
+    arr = np.array(kp, dtype=np.float32).reshape(21, 3)
+    if np.sum(np.abs(arr)) < 0.01:
+        return kp  # no-hand / zero frame — leave as-is
+
+    wrist = arr[0].copy()
+    arr = arr - wrist  # translate: wrist -> origin
+
+    scale = np.linalg.norm(arr[9])  # distance to middle finger MCP
+    if scale < 1e-6:
+        scale = 1.0
+    arr = arr / scale
+
+    return arr.flatten().tolist()
 
 # ================================================
 # EXTRACT KEYPOINTS
@@ -176,7 +233,7 @@ def extract_keypoints(image_bgr):
     kp = []
     for lm in results.multi_hand_landmarks[0].landmark:
         kp.extend([lm.x, lm.y, lm.z])
-    return kp  # 63 floats
+    return normalize_keypoints(kp)  # 63 floats, wrist-centered + scaled
 
 # ================================================
 # RUN INFERENCE

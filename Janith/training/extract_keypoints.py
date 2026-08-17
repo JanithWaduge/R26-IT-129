@@ -67,8 +67,38 @@ hands    = mp_hands.Hands(
 )
 
 # ================================================
-# NOISE FILTER — Research Contribution
+# NORMALIZATION — Wrist-centered, scale-invariant
+# ADDED: with more real recordings now available, this removes the
+# "where in frame / how far from camera" variance so the model can
+# actually learn hand SHAPE instead of hand POSITION. Zero (no-hand)
+# frames pass through unchanged.
+#
+# IMPORTANT: this exact function must also run in slsl_server.py's
+# extract_keypoints() at inference time, or training and serving will
+# see different coordinate systems again.
 # ================================================
+def normalize_keypoints(kp):
+    """
+    kp: flat list of 63 floats (21 MediaPipe hand landmarks x,y,z).
+    Step 1: translate so the wrist (landmark 0) becomes the origin.
+    Step 2: scale by the wrist→middle-finger-MCP (landmark 9) distance,
+             so hand size in frame no longer matters.
+    """
+    arr = np.array(kp, dtype=np.float32).reshape(21, 3)
+    if np.sum(np.abs(arr)) < 0.01:
+        return kp  # no-hand / zero frame — leave as-is
+
+    wrist = arr[0].copy()
+    arr = arr - wrist  # translate: wrist -> origin
+
+    scale = np.linalg.norm(arr[9])  # distance to middle finger MCP
+    if scale < 1e-6:
+        scale = 1.0
+    arr = arr / scale
+
+    return arr.flatten().tolist()
+
+
 def apply_noise_filter(sequence, threshold=NOISE_THRESHOLD):
     if len(sequence) < 2:
         return sequence, 0
@@ -120,6 +150,7 @@ def extract_from_file(video_path, sign_name):
             kp = []
             for point in lm.landmark:
                 kp.extend([point.x, point.y, point.z])
+            kp = normalize_keypoints(kp)
         else:
             kp = [0.0] * 63
         sequence.append(kp)
