@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../core/config/api_config.dart';
+import '../../core/theme/app_colors.dart';
 
 class SignVideoPlayer extends StatefulWidget {
   const SignVideoPlayer({
@@ -163,11 +164,18 @@ class _SignVideoPlayerState extends State<SignVideoPlayer> {
 
         return Column(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: AspectRatio(
-                aspectRatio: aspectRatio == 0 ? 16 / 9 : aspectRatio,
-                child: VideoPlayer(controller),
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.hairline),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: AspectRatio(
+                  aspectRatio: aspectRatio == 0 ? 16 / 9 : aspectRatio,
+                  child: VideoPlayer(controller),
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -175,13 +183,24 @@ class _SignVideoPlayerState extends State<SignVideoPlayer> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 IconButton(
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppColors.surface,
+                    foregroundColor: AppColors.ink,
+                    side: const BorderSide(color: AppColors.hairline),
+                  ),
                   onPressed: _togglePlayback,
                   tooltip: controller.value.isPlaying ? 'Pause' : 'Play',
                   icon: Icon(
                     controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
                   ),
                 ),
+                const SizedBox(width: 8),
                 IconButton(
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppColors.surface,
+                    foregroundColor: AppColors.ink,
+                    side: const BorderSide(color: AppColors.hairline),
+                  ),
                   onPressed: _replay,
                   tooltip: 'Replay',
                   icon: const Icon(Icons.replay),
@@ -206,16 +225,21 @@ class _VideoMessage extends StatelessWidget {
     return Container(
       height: 230,
       decoration: BoxDecoration(
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(),
+        border: Border.all(color: AppColors.hairline),
       ),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 64),
+            Icon(icon, size: 64, color: AppColors.inkSoft),
             const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.inkSoft),
+            ),
           ],
         ),
       ),

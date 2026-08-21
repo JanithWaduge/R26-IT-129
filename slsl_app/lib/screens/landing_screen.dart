@@ -20,10 +20,14 @@ class _LandingScreenState extends State<LandingScreen>
   // echo the product's core idea: a sign being scanned and recognized live.
   late AnimationController _pulseController;
 
-  static const _cyan = Color(0xFF00B4D8);
-  static const _violet = Color(0xFF7B2FBE);
-  static const _emerald = Color(0xFF06D6A0);
-  static const _amber = Color(0xFFFFB703);
+  static const _white = Color(0xFFFFFFFF);
+  static const _ink = Color(0xFF14162B);
+  static const _inkSoft = Color(0xFF6B7280);
+
+  static const _cyan = Color(0xFF2F6BFF);
+  static const _violet = Color(0xFF8B5CF6);
+  static const _emerald = Color(0xFF10B981);
+  static const _amber = Color(0xFF4F46E5);
 
   @override
   void initState() {
@@ -51,12 +55,12 @@ class _LandingScreenState extends State<LandingScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF040911),
+      backgroundColor: _white,
       body: Stack(
         children: [
-          Positioned(top: -80, left: -60, child: _glow(280, _cyan, 0.09)),
-          Positioned(top: 240, right: -80, child: _glow(220, _violet, 0.07)),
-          Positioned(bottom: -60, left: -40, child: _glow(200, _emerald, 0.06)),
+          Positioned(top: -70, left: -60, child: _blob(260, _cyan, 0.16)),
+          Positioned(top: 220, right: -90, child: _blob(230, _violet, 0.14)),
+          Positioned(bottom: -50, left: -50, child: _blob(220, _emerald, 0.13)),
           SafeArea(
             child: FadeTransition(
               opacity: _fadeAnim,
@@ -79,18 +83,15 @@ class _LandingScreenState extends State<LandingScreen>
     );
   }
 
-  Widget _glow(double size, Color color, double opacity) => Container(
+  Widget _blob(double size, Color color, double opacity) => Container(
         width: size,
         height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(opacity),
-              blurRadius: size,
-              spreadRadius: size * 0.5,
-            ),
-          ],
+          gradient: RadialGradient(colors: [
+            color.withOpacity(opacity),
+            color.withOpacity(0),
+          ]),
         ),
       );
 
@@ -121,7 +122,7 @@ class _LandingScreenState extends State<LandingScreen>
               const Text(
                 'SIGN LANGUAGE, RECOGNIZED LIVE',
                 style: TextStyle(
-                  color: Color(0xFF90E0EF),
+                  color: Color(0xFF1E40AF),
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.4,
@@ -140,11 +141,11 @@ class _LandingScreenState extends State<LandingScreen>
                 letterSpacing: -0.9,
               ),
               children: [
-                TextSpan(text: 'Communicate\n', style: TextStyle(color: Colors.white)),
-                TextSpan(text: 'Without\n', style: TextStyle(color: Colors.white)),
+                TextSpan(text: 'Communicate\n', style: TextStyle(color: Color(0xFF14162B))),
+                TextSpan(text: 'Without\n', style: TextStyle(color: Color(0xFF14162B))),
                 TextSpan(
                     text: 'Barriers.',
-                    style: TextStyle(color: Color(0xFF00B4D8), fontStyle: FontStyle.italic)),
+                    style: TextStyle(color: Color(0xFF2F6BFF), fontStyle: FontStyle.italic)),
               ],
             ),
           ),
@@ -153,7 +154,7 @@ class _LandingScreenState extends State<LandingScreen>
             'A bidirectional mobile app for Sri Lankan Sign Language — '
             'real-time recognition, translation, and teaching, built for the '
             'Deaf and Hard of Hearing community.',
-            style: TextStyle(color: Colors.white.withOpacity(0.55), fontSize: 13, height: 1.6),
+            style: TextStyle(color: _inkSoft, fontSize: 13, height: 1.6),
           ),
           const SizedBox(height: 32),
           SizedBox(
@@ -165,7 +166,7 @@ class _LandingScreenState extends State<LandingScreen>
                 gradient: const LinearGradient(
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
-                  colors: [Color(0xFF00B4D8), Color(0xFF0077B6)],
+                  colors: [Color(0xFF2F6BFF), Color(0xFF8B5CF6)],
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -209,9 +210,16 @@ class _LandingScreenState extends State<LandingScreen>
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.02),
+        color: _white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.07)),
+        border: Border.all(color: const Color(0xFFEDEFF5)),
+        boxShadow: [
+          BoxShadow(
+            color: _ink.withOpacity(0.05),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -228,21 +236,26 @@ class _LandingScreenState extends State<LandingScreen>
 
   Widget _statItem(IconData icon, String value, String label, Color color) => Column(
         children: [
-          Icon(icon, color: color, size: 18),
+        Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
+        child: Icon(icon, color: color, size: 17),
+        ),
           const SizedBox(height: 6),
           Text(value,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                  color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, height: 1.1)),
+          style: TextStyle(
+            color: _ink, fontSize: 20, fontWeight: FontWeight.w800, height: 1.1)),
           const SizedBox(height: 4),
           Text(label,
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10, height: 1.4)),
+          style: TextStyle(color: _inkSoft, fontSize: 10, height: 1.4)),
         ],
       );
 
-  Widget _statDivider() =>
-      Container(height: 40, width: 1, color: Colors.white10, margin: const EdgeInsets.symmetric(horizontal: 8));
+    Widget _statDivider() => Container(
+      height: 40, width: 1, color: const Color(0xFFEDEFF5), margin: const EdgeInsets.symmetric(horizontal: 8));
 
   // ════════════════════════════════════════════
   // HOW GESTURE RECOGNITION WORKS
@@ -278,7 +291,7 @@ class _LandingScreenState extends State<LandingScreen>
               itemCount: steps.length,
               separatorBuilder: (_, __) => Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Icon(Icons.arrow_forward_rounded, color: Colors.white.withOpacity(0.15), size: 16),
+                child: Icon(Icons.arrow_forward_rounded, color: _inkSoft.withOpacity(0.3), size: 16),
               ),
               itemBuilder: (_, i) {
                 final s = steps[i];
@@ -296,9 +309,12 @@ class _LandingScreenState extends State<LandingScreen>
       width: 180,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.07),
+        color: _white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: const Color(0xFFEDEFF5)),
+        boxShadow: [
+          BoxShadow(color: color.withOpacity(0.10), blurRadius: 18, offset: const Offset(0, 8)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -319,7 +335,7 @@ class _LandingScreenState extends State<LandingScreen>
           Text(title, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
           Text(body,
-              style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11, height: 1.4),
+              style: TextStyle(color: _inkSoft, fontSize: 11, height: 1.4),
               maxLines: 3,
               overflow: TextOverflow.ellipsis),
         ],
@@ -409,22 +425,25 @@ class _LandingScreenState extends State<LandingScreen>
       margin: const EdgeInsets.fromLTRB(24, 0, 24, 40),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.03),
+        color: _white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: const Color(0xFFEDEFF5)),
+        boxShadow: [
+          BoxShadow(color: _ink.withOpacity(0.05), blurRadius: 22, offset: const Offset(0, 10)),
+        ],
       ),
       child: Column(
         children: [
-          const Icon(Icons.accessibility_new_rounded, color: Color(0xFF00B4D8), size: 32),
+          const Icon(Icons.accessibility_new_rounded, color: Color(0xFF2F6BFF), size: 32),
           const SizedBox(height: 12),
-          const Text('Built for Inclusion',
-              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+          Text('Built for Inclusion',
+              style: TextStyle(color: _ink, fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           Text(
             'Empowering 400,000+ Deaf and Hard of Hearing individuals '
             'across Sri Lanka with accessible communication.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 12, height: 1.6),
+            style: TextStyle(color: _inkSoft, fontSize: 12, height: 1.6),
           ),
           const SizedBox(height: 18),
           // Four dots — one per module — a quiet closing signature instead
@@ -449,7 +468,7 @@ class _LandingScreenState extends State<LandingScreen>
   Widget _footerDot(Color color) => Container(
         width: 7,
         height: 7,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: color.withOpacity(0.8)),
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
       );
 
   Widget _sectionLabel(String text) => Padding(
@@ -457,7 +476,7 @@ class _LandingScreenState extends State<LandingScreen>
         child: Text(
           text,
           style: TextStyle(
-              color: Colors.white.withOpacity(0.35),
+              color: _inkSoft,
               fontSize: 11,
               fontWeight: FontWeight.w700,
               letterSpacing: 2),
@@ -467,7 +486,7 @@ class _LandingScreenState extends State<LandingScreen>
   void _showUnavailable(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: const Text('This module is developed by another team member'),
-      backgroundColor: const Color(0xFF023E8A),
+      backgroundColor: _ink,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       duration: const Duration(seconds: 2),
@@ -542,29 +561,29 @@ class _ModuleCard extends StatelessWidget {
     required this.onTap,
   });
 
+  static const _ink = Color(0xFF14162B);
+  static const _inkSoft = Color(0xFF6B7280);
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+      child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: isAvailable ? accentColor.withOpacity(0.08) : Colors.white.withOpacity(0.02),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: isAvailable ? accentColor.withOpacity(0.35) : Colors.white.withOpacity(0.07),
-            width: isAvailable ? 1.5 : 1,
+            color: isAvailable ? accentColor.withOpacity(0.28) : const Color(0xFFEDEFF5),
+            width: isAvailable ? 1.4 : 1,
           ),
-          boxShadow: isAvailable
-              ? [
-                  BoxShadow(
-                    color: accentColor.withOpacity(0.12),
-                    blurRadius: 22,
-                    offset: const Offset(0, 10),
-                  ),
-                ]
-              : null,
+          boxShadow: [
+            BoxShadow(
+              color: (isAvailable ? accentColor : _ink).withOpacity(isAvailable ? 0.14 : 0.04),
+              blurRadius: 22,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -575,19 +594,19 @@ class _ModuleCard extends StatelessWidget {
                   width: 52,
                   height: 52,
                   decoration: BoxDecoration(
-                    color: accentColor.withOpacity(isAvailable ? 0.18 : 0.06),
+                    color: accentColor.withOpacity(isAvailable ? 0.16 : 0.08),
                     borderRadius: BorderRadius.circular(15),
                     boxShadow: isAvailable
-                        ? [BoxShadow(color: accentColor.withOpacity(0.3), blurRadius: 14)]
+                        ? [BoxShadow(color: accentColor.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 6))]
                         : null,
                   ),
                   child: Icon(icon,
-                      color: isAvailable ? accentColor : accentColor.withOpacity(0.4), size: 26),
+                      color: isAvailable ? accentColor : _inkSoft.withOpacity(0.5), size: 26),
                 ),
                 const SizedBox(height: 6),
                 Text(moduleNo,
                     style: TextStyle(
-                        color: isAvailable ? accentColor.withOpacity(0.6) : Colors.white24,
+                        color: isAvailable ? accentColor : _inkSoft.withOpacity(0.5),
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 1)),
@@ -603,7 +622,7 @@ class _ModuleCard extends StatelessWidget {
                       Expanded(
                         child: Text(title,
                             style: TextStyle(
-                                color: isAvailable ? Colors.white : Colors.white.withOpacity(0.5),
+                                color: isAvailable ? _ink : _inkSoft,
                                 fontSize: 14,
                                 fontWeight: FontWeight.w700,
                                 height: 1.2)),
@@ -613,8 +632,8 @@ class _ModuleCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: isAvailable
-                              ? accentColor.withOpacity(0.16)
-                              : Colors.white.withOpacity(0.05),
+                              ? accentColor.withOpacity(0.12)
+                              : const Color(0xFFF3F4F8),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
@@ -629,10 +648,10 @@ class _ModuleCard extends StatelessWidget {
                                     BoxDecoration(shape: BoxShape.circle, color: accentColor),
                               )
                             else
-                              Icon(Icons.lock_outline_rounded, size: 10, color: Colors.white30),
+                              Icon(Icons.lock_outline_rounded, size: 10, color: _inkSoft.withOpacity(0.5)),
                             Text(isAvailable ? 'Live' : 'Locked',
                                 style: TextStyle(
-                                    color: isAvailable ? accentColor : Colors.white30,
+                                    color: isAvailable ? accentColor : _inkSoft.withOpacity(0.6),
                                     fontSize: 9,
                                     fontWeight: FontWeight.w700)),
                           ],
@@ -643,7 +662,7 @@ class _ModuleCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(description,
                       style: TextStyle(
-                          color: Colors.white.withOpacity(isAvailable ? 0.55 : 0.35),
+                        color: isAvailable ? _inkSoft : _inkSoft.withOpacity(0.6),
                           fontSize: 12,
                           height: 1.45),
                       maxLines: 3,
@@ -656,14 +675,14 @@ class _ModuleCard extends StatelessWidget {
                         .map((tag) => Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: accentColor.withOpacity(isAvailable ? 0.12 : 0.04),
+                                color: isAvailable ? accentColor.withOpacity(0.10) : const Color(0xFFF3F4F8),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(tag,
                                   style: TextStyle(
                                       color: isAvailable
                                           ? accentColor
-                                          : accentColor.withOpacity(0.35),
+                                          : _inkSoft.withOpacity(0.5),
                                       fontSize: 10,
                                       fontWeight: FontWeight.w600)),
                             ))
@@ -680,10 +699,10 @@ class _ModuleCard extends StatelessWidget {
                 height: 26,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isAvailable ? accentColor.withOpacity(0.14) : Colors.transparent,
+                  color: isAvailable ? accentColor.withOpacity(0.12) : const Color(0xFFF3F4F8),
                 ),
                 child: Icon(Icons.arrow_forward_ios_rounded,
-                    size: 12, color: isAvailable ? accentColor : Colors.white12),
+                    size: 12, color: isAvailable ? accentColor : _inkSoft.withOpacity(0.4)),
               ),
             ),
           ],

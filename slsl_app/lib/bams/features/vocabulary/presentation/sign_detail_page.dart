@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/network/authenticated_api_client.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../shared/widgets/sign_video_player.dart';
 import '../data/vocabulary_api.dart';
 import '../domain/curriculum_competency.dart';
@@ -71,15 +72,19 @@ class _SignDetailPageState extends State<SignDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Sign Details')),
-      body: SafeArea(child: _buildBody(context)),
+    return Theme(
+      data: AppTheme.light,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(title: const Text('Sign Details')),
+        body: SafeArea(child: _buildBody(context)),
+      ),
     );
   }
 
   Widget _buildBody(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
     }
 
     if (_error != null) {
@@ -89,9 +94,10 @@ class _SignDetailPageState extends State<SignDetailPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, size: 64),
+              const Icon(Icons.error_outline, size: 56, color: AppColors.error),
               const SizedBox(height: 16),
-              Text(_error!, textAlign: TextAlign.center),
+              Text(_error!,
+                  textAlign: TextAlign.center, style: const TextStyle(color: AppColors.inkSoft)),
               const SizedBox(height: 16),
               FilledButton(
                 onPressed: _loadSign,
@@ -108,28 +114,25 @@ class _SignDetailPageState extends State<SignDetailPage> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        // FIXED: this used to be a static Icon + "Media reference available"
-        // text with no actual playback behind it. SignVideoPlayer already
-        // exists in the codebase (and is used correctly in the quiz
-        // screens) - it just was never wired in here. It manages its own
-        // sizing/border via AspectRatio, so no outer Container needed.
         sign.media.isAvailable
             ? SignVideoPlayer(mediaUri: sign.media.uri!)
             : Container(
                 height: 220,
                 decoration: BoxDecoration(
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(),
+                  border: Border.all(color: AppColors.hairline),
                 ),
                 child: const Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.video_library_outlined, size: 72),
+                      Icon(Icons.video_library_outlined, size: 64, color: AppColors.inkSoft),
                       SizedBox(height: 12),
                       Text(
                         'Validated sign media '
                         'has not been attached.',
+                        style: TextStyle(color: AppColors.inkSoft),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -139,13 +142,15 @@ class _SignDetailPageState extends State<SignDetailPage> {
         const SizedBox(height: 24),
         Text(
           sign.meanings.forLanguage(widget.preferredLanguage),
-          style: Theme.of(context).textTheme.headlineMedium,
+          style: const TextStyle(color: AppColors.ink, fontSize: 22, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 6),
-        Text('SLSL gloss: ${sign.gloss}'),
+        Text('SLSL gloss: ${sign.gloss}',
+            style: const TextStyle(color: AppColors.inkSoft, fontSize: 13)),
         const SizedBox(height: 20),
         _DetailCard(
           title: 'Meanings',
+          accent: AppColors.primary,
           children: [
             _DetailRow(label: 'English', value: sign.meanings.english),
             _DetailRow(label: 'Sinhala', value: sign.meanings.sinhala),
@@ -154,6 +159,7 @@ class _SignDetailPageState extends State<SignDetailPage> {
         ),
         _DetailCard(
           title: 'Classification',
+          accent: AppColors.secondary,
           children: [
             _DetailRow(
               label: 'Category',
@@ -169,43 +175,50 @@ class _SignDetailPageState extends State<SignDetailPage> {
         ),
         _DetailCard(
           title: 'Competencies',
+          accent: AppColors.success,
           children: sign.competencies.isEmpty
-              ? const [Text('No competency is linked.')]
+              ? const [Text('No competency is linked.', style: TextStyle(color: AppColors.inkSoft))]
               : sign.competencies.map((CurriculumCompetency competency) {
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.checklist),
+                    leading: const Icon(Icons.checklist, color: AppColors.success),
                     title: Text(
                       competency.title.forLanguage(widget.preferredLanguage),
+                      style: const TextStyle(color: AppColors.ink),
                     ),
                     subtitle: Text(
                       'Receptive target: '
                       '${(competency.receptiveThreshold * 100).round()}%\n'
                       'Productive target: '
                       '${(competency.productiveThreshold * 100).round()}%',
+                      style: const TextStyle(color: AppColors.inkSoft),
                     ),
                   );
                 }).toList(),
         ),
         _DetailCard(
           title: 'Prerequisites',
+          accent: AppColors.indigo,
           children: sign.prerequisites.isEmpty
-              ? const [Text('No prerequisite signs.')]
+              ? const [Text('No prerequisite signs.', style: TextStyle(color: AppColors.inkSoft))]
               : sign.prerequisites.map((prerequisite) {
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.account_tree),
+                    leading: const Icon(Icons.account_tree, color: AppColors.indigo),
                     title: Text(
                       prerequisite.meanings.forLanguage(
                         widget.preferredLanguage,
                       ),
+                      style: const TextStyle(color: AppColors.ink),
                     ),
-                    subtitle: Text(prerequisite.gloss),
+                    subtitle: Text(prerequisite.gloss,
+                        style: const TextStyle(color: AppColors.inkSoft)),
                   );
                 }).toList(),
         ),
         _DetailCard(
           title: 'Media integration',
+          accent: AppColors.warning,
           children: [
             _DetailRow(label: 'Source type', value: sign.media.sourceType),
             _DetailRow(
@@ -220,12 +233,17 @@ class _SignDetailPageState extends State<SignDetailPage> {
         ),
         if (sign.validationStatus == 'provisional')
           Card(
+            color: AppColors.warning.withOpacity(0.06),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+              side: BorderSide(color: AppColors.warning.withOpacity(0.25)),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(18),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.info_outline),
+                  const Icon(Icons.info_outline, color: AppColors.warning),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -234,7 +252,7 @@ class _SignDetailPageState extends State<SignDetailPage> {
                       'used as validated SLSL '
                       'curriculum material until '
                       'a qualified teacher approves it.',
-                      style: Theme.of(context).textTheme.bodyMedium,
+                      style: const TextStyle(color: AppColors.inkSoft, fontSize: 13),
                     ),
                   ),
                 ],
@@ -247,10 +265,11 @@ class _SignDetailPageState extends State<SignDetailPage> {
 }
 
 class _DetailCard extends StatelessWidget {
-  const _DetailCard({required this.title, required this.children});
+  const _DetailCard({required this.title, required this.children, required this.accent});
 
   final String title;
   final List<Widget> children;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
@@ -261,7 +280,12 @@ class _DetailCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            Row(children: [
+              Container(width: 4, height: 16, color: accent),
+              const SizedBox(width: 8),
+              Text(title,
+                  style: TextStyle(color: accent, fontSize: 15, fontWeight: FontWeight.w700)),
+            ]),
             const SizedBox(height: 12),
             ...children,
           ],
@@ -287,11 +311,12 @@ class _DetailRow extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(fontWeight: FontWeight.bold),
+              style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.ink),
             ),
           ),
           const SizedBox(width: 12),
-          Expanded(flex: 2, child: Text(value)),
+          Expanded(
+              flex: 2, child: Text(value, style: const TextStyle(color: AppColors.inkSoft))),
         ],
       ),
     );

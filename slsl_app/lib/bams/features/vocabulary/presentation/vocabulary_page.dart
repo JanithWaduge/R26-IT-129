@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/network/authenticated_api_client.dart';
+import '../../../core/theme/app_colors.dart';
 import '../data/vocabulary_api.dart';
 import '../domain/curriculum_category.dart';
 import '../domain/paginated_signs.dart';
@@ -149,33 +150,38 @@ class _VocabularyPageState extends State<VocabularyPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('SLSL Vocabulary')),
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _loadInitialData,
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
+    return Theme(
+      data: AppTheme.light,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(title: const Text('SLSL Vocabulary')),
+        body: SafeArea(
+          child: RefreshIndicator(
+            onRefresh: _loadInitialData,
+            color: AppColors.primary,
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
               TextField(
                 controller: _searchController,
                 textInputAction: TextInputAction.search,
                 onSubmitted: (_) {
                   _loadSigns();
                 },
+                style: const TextStyle(color: AppColors.ink),
                 decoration: InputDecoration(
                   labelText: 'Search vocabulary',
                   hintText: 'Search by word, gloss or tag',
-                  prefixIcon: const Icon(Icons.search),
+                  prefixIcon: const Icon(Icons.search, color: AppColors.primary),
                   suffixIcon: IconButton(
                     onPressed: _loadSigns,
-                    icon: const Icon(Icons.arrow_forward),
+                    icon: const Icon(Icons.arrow_forward, color: AppColors.primary),
                   ),
-                  border: const OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 20),
-              Text('Categories', style: Theme.of(context).textTheme.titleLarge),
+              const Text('Categories',
+                  style: TextStyle(color: AppColors.ink, fontSize: 18, fontWeight: FontWeight.w700)),
               const SizedBox(height: 12),
               SizedBox(
                 height: 108,
@@ -216,10 +222,10 @@ class _VocabularyPageState extends State<VocabularyPage> {
               const SizedBox(height: 20),
               DropdownButtonFormField<int?>(
                 value: _selectedDifficulty,
+                style: const TextStyle(color: AppColors.ink, fontSize: 15),
                 decoration: const InputDecoration(
                   labelText: 'Difficulty filter',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.tune),
+                  prefixIcon: Icon(Icons.tune, color: AppColors.secondary),
                 ),
                 items: const [
                   DropdownMenuItem<int?>(
@@ -244,7 +250,7 @@ class _VocabularyPageState extends State<VocabularyPage> {
               if (_loading)
                 const Padding(
                   padding: EdgeInsets.all(48),
-                  child: Center(child: CircularProgressIndicator()),
+                  child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
                 )
               else if (_error != null)
                 _ErrorCard(message: _error!, onRetry: _loadInitialData)
@@ -253,10 +259,11 @@ class _VocabularyPageState extends State<VocabularyPage> {
                   padding: EdgeInsets.all(48),
                   child: Column(
                     children: [
-                      Icon(Icons.search_off, size: 64),
+                      Icon(Icons.search_off, size: 56, color: AppColors.inkSoft),
                       SizedBox(height: 16),
                       Text(
                         'No matching signs were found.',
+                        style: TextStyle(color: AppColors.inkSoft),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -265,13 +272,15 @@ class _VocabularyPageState extends State<VocabularyPage> {
               else ...[
                 Row(
                   children: [
-                    Expanded(
+                    const Expanded(
                       child: Text(
                         'Signs',
-                        style: Theme.of(context).textTheme.titleLarge,
+                        style: TextStyle(
+                            color: AppColors.ink, fontSize: 18, fontWeight: FontWeight.w700),
                       ),
                     ),
-                    Text('${_signs!.totalItems} items'),
+                    Text('${_signs!.totalItems} items',
+                        style: const TextStyle(color: AppColors.inkSoft, fontSize: 12)),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -283,25 +292,32 @@ class _VocabularyPageState extends State<VocabularyPage> {
                         _openSign(sign);
                       },
                       leading: CircleAvatar(
-                        child: Text(sign.difficulty.toString()),
+                        backgroundColor: AppColors.primary.withOpacity(0.14),
+                        foregroundColor: AppColors.primary,
+                        child: Text(sign.difficulty.toString(),
+                            style: const TextStyle(fontWeight: FontWeight.w700)),
                       ),
                       title: Text(
                         sign.meanings.forLanguage(widget.preferredLanguage),
+                        style: const TextStyle(color: AppColors.ink, fontWeight: FontWeight.w600),
                       ),
                       subtitle: Text(
                         '${sign.gloss} • '
                         '${sign.validationStatus}',
+                        style: const TextStyle(color: AppColors.inkSoft),
                       ),
                       trailing: Icon(
                         sign.media.isAvailable
                             ? Icons.play_circle
                             : Icons.hourglass_empty,
+                        color: sign.media.isAvailable ? AppColors.success : AppColors.warning,
                       ),
                     ),
                   );
                 }),
               ],
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -333,19 +349,35 @@ class _CategoryCard extends StatelessWidget {
           width: 112,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
+            gradient: selected ? AppColors.primaryGradient : null,
+            color: selected ? null : Colors.white,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(width: selected ? 2 : 1),
+            border: Border.all(
+                color: selected ? Colors.transparent : AppColors.hairline,
+                width: selected ? 0 : 1),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                        color: AppColors.primary.withOpacity(0.3),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6)),
+                  ]
+                : null,
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 30),
+              Icon(icon, size: 28, color: selected ? Colors.white : AppColors.primary),
               const SizedBox(height: 8),
               Text(
                 title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: selected ? Colors.white : AppColors.ink,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -364,16 +396,23 @@ class _ErrorCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      color: AppColors.error.withOpacity(0.06),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: AppColors.error.withOpacity(0.25)),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            const Icon(Icons.error_outline, size: 52),
+            const Icon(Icons.error_outline, size: 48, color: AppColors.error),
             const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
+            Text(message,
+                textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error)),
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: onRetry,
+              style: FilledButton.styleFrom(backgroundColor: AppColors.error),
               icon: const Icon(Icons.refresh),
               label: const Text('Try Again'),
             ),

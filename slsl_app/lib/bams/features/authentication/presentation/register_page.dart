@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_colors.dart';
 import 'auth_controller.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -61,13 +62,14 @@ class _RegisterPageState extends State<RegisterPage> {
     if (error != null) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(error)));
+      ).showSnackBar(SnackBar(content: Text(error), backgroundColor: AppColors.error));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Create Account')),
       body: SafeArea(
         child: ListView(
@@ -81,10 +83,10 @@ class _RegisterPageState extends State<RegisterPage> {
                   TextFormField(
                     controller: _nameController,
                     textCapitalization: TextCapitalization.words,
+                    style: const TextStyle(color: AppColors.ink),
                     decoration: const InputDecoration(
                       labelText: 'Full name',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.person),
+                      prefixIcon: Icon(Icons.person, color: AppColors.secondary),
                     ),
                     validator: (String? value) {
                       if ((value?.trim().length ?? 0) < 2) {
@@ -99,10 +101,10 @@ class _RegisterPageState extends State<RegisterPage> {
                   TextFormField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
+                    style: const TextStyle(color: AppColors.ink),
                     decoration: const InputDecoration(
                       labelText: 'Email address',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.email),
+                      prefixIcon: Icon(Icons.email, color: AppColors.primary),
                     ),
                     validator: (String? value) {
                       final String email = value?.trim() ?? '';
@@ -119,13 +121,13 @@ class _RegisterPageState extends State<RegisterPage> {
                   TextFormField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
+                    style: const TextStyle(color: AppColors.ink),
                     decoration: InputDecoration(
                       labelText: 'Password',
                       helperText:
                           'At least 10 characters '
                           'with a letter and number.',
-                      border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.lock),
+                      prefixIcon: const Icon(Icons.lock, color: AppColors.primary),
                       suffixIcon: IconButton(
                         onPressed: () {
                           setState(() {
@@ -136,6 +138,7 @@ class _RegisterPageState extends State<RegisterPage> {
                           _obscurePassword
                               ? Icons.visibility
                               : Icons.visibility_off,
+                          color: AppColors.inkSoft,
                         ),
                       ),
                     ),
@@ -163,10 +166,10 @@ class _RegisterPageState extends State<RegisterPage> {
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     value: _language,
+                    style: const TextStyle(color: AppColors.ink, fontSize: 15),
                     decoration: const InputDecoration(
                       labelText: 'Preferred language',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.language),
+                      prefixIcon: Icon(Icons.language, color: AppColors.success),
                     ),
                     items: const [
                       DropdownMenuItem(
@@ -190,11 +193,11 @@ class _RegisterPageState extends State<RegisterPage> {
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _gradeController,
+                    style: const TextStyle(color: AppColors.ink),
                     decoration: const InputDecoration(
                       labelText: 'Grade or level',
                       hintText: 'Grade 8',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.school),
+                      prefixIcon: Icon(Icons.school, color: AppColors.indigo),
                     ),
                     validator: (String? value) {
                       if ((value?.trim().isEmpty ?? true)) {
@@ -209,19 +212,39 @@ class _RegisterPageState extends State<RegisterPage> {
                   ListenableBuilder(
                     listenable: widget.controller,
                     builder: (context, child) {
-                      return FilledButton(
-                        onPressed: widget.controller.isSubmitting
-                            ? null
-                            : _submit,
-                        child: widget.controller.isSubmitting
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Text('Create Account'),
+                      return SizedBox(
+                        height: 52,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            gradient: widget.controller.isSubmitting
+                                ? null
+                                : AppColors.primaryGradient,
+                            color: widget.controller.isSubmitting
+                                ? AppColors.hairline
+                                : null,
+                          ),
+                          child: FilledButton(
+                            onPressed: widget.controller.isSubmitting
+                                ? null
+                                : _submit,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              shadowColor: Colors.transparent,
+                              disabledBackgroundColor: Colors.transparent,
+                            ),
+                            child: widget.controller.isSubmitting
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text('Create Account'),
+                          ),
+                        ),
                       );
                     },
                   ),

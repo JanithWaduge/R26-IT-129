@@ -210,13 +210,16 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
   // ════════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
+    // Camera stages are full-bleed over the live feed, so they keep a dark
+    // backdrop for contrast — every other stage uses the light brand theme.
+    final isCameraStage = _stage == _Stage.liveValidation || _stage == _Stage.capturing;
     return Scaffold(
-      backgroundColor: kBackground,
+      backgroundColor: isCameraStage ? Colors.black : kBackground,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Add New Sign', style: TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text('Add New Sign', style: TextStyle(color: isCameraStage ? Colors.white : kInk, fontWeight: FontWeight.w700)),
+        iconTheme: IconThemeData(color: isCameraStage ? Colors.white : kInk),
       ),
       body: SafeArea(child: _buildStage()),
     );
@@ -241,10 +244,10 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Sign Details',
-            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+            style: TextStyle(color: kInk, fontSize: 20, fontWeight: FontWeight.w700)),
         const SizedBox(height: 6),
-        Text('Enter the word this sign represents before recording.',
-            style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
+        const Text('Enter the word this sign represents before recording.',
+            style: TextStyle(color: kInkSoft, fontSize: 13)),
         const SizedBox(height: 24),
         _buildTextField(_englishController, 'English word', Icons.abc_rounded),
         const SizedBox(height: 16),
@@ -258,16 +261,29 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
         const Spacer(),
         SizedBox(
           width: double.infinity, height: 54,
-          child: ElevatedButton(
-            onPressed: _canProceed() ? () {
-              setState(() => _stage = _Stage.liveValidation);
-              _initCamera();
-            } : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: kPrimary, foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: _canProceed()
+                  ? const LinearGradient(colors: [kPrimary, kSecondary])
+                  : null,
+              color: _canProceed() ? null : const Color(0xFFEDEFF5),
             ),
-            child: const Text('Continue to Camera', style: TextStyle(fontWeight: FontWeight.w700)),
+            child: ElevatedButton(
+              onPressed: _canProceed() ? () {
+                setState(() => _stage = _Stage.liveValidation);
+                _initCamera();
+              } : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                disabledBackgroundColor: Colors.transparent,
+                foregroundColor: Colors.white,
+                disabledForegroundColor: kInkSoft,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Text('Continue to Camera', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
           ),
         ),
       ]),
@@ -281,13 +297,13 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
     return TextField(
       controller: c,
       onChanged: (_) => setState(() {}),
-      style: const TextStyle(color: Colors.white),
+      style: const TextStyle(color: kInk),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+        labelStyle: const TextStyle(color: kInkSoft),
         prefixIcon: Icon(icon, color: kPrimary),
         filled: true,
-        fillColor: kSurface.withOpacity(0.4),
+        fillColor: kSurface,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
       ),
     );
@@ -301,12 +317,12 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
         padding: const EdgeInsets.symmetric(vertical: 14),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? kPrimary.withOpacity(0.15) : kSurface.withOpacity(0.3),
+          color: selected ? kPrimary.withOpacity(0.12) : kSurface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: selected ? kPrimary : Colors.white12),
+          border: Border.all(color: selected ? kPrimary : const Color(0xFFEDEFF5)),
         ),
         child: Text(label, style: TextStyle(
-            color: selected ? kPrimary : Colors.white54, fontWeight: FontWeight.w600)),
+            color: selected ? kPrimary : kInkSoft, fontWeight: FontWeight.w600)),
       ),
     );
   }
@@ -332,7 +348,7 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: (_lastValid ? kSuccess : kError).withOpacity(0.9),
+            color: (_lastValid ? kSuccess : kError).withOpacity(0.92),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Row(children: [
@@ -390,7 +406,7 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         CircularProgressIndicator(value: _captureProgress, color: kPrimary),
         const SizedBox(height: 20),
-        Text(_statusText, style: const TextStyle(color: Colors.white)),
+        Text(_statusText, style: const TextStyle(color: kInk)),
       ]),
     );
   }
@@ -407,19 +423,26 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(
-          isRejected ? Icons.cancel_rounded : Icons.check_circle_rounded,
-          color: isRejected ? kError : kSuccess, size: 72,
+        Container(
+          width: 96, height: 96,
+          decoration: BoxDecoration(
+            color: (isRejected ? kError : kSuccess).withOpacity(0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            isRejected ? Icons.cancel_rounded : Icons.check_circle_rounded,
+            color: isRejected ? kError : kSuccess, size: 52,
+          ),
         ),
         const SizedBox(height: 20),
         Text(
           isRejected ? 'Sign Not Accepted' : 'Submitted for Review!',
-          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700),
+          style: const TextStyle(color: kInk, fontSize: 20, fontWeight: FontWeight.w700),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 10),
         Text(message.toString(),
-            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13),
+            style: const TextStyle(color: kInkSoft, fontSize: 13),
             textAlign: TextAlign.center),
 
         // ── NEW: batch-ready banner ──
@@ -428,9 +451,9 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: (batchReady ? kSuccess : kWarning).withOpacity(0.1),
+              color: (batchReady ? kSuccess : kWarning).withOpacity(0.10),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: (batchReady ? kSuccess : kWarning).withOpacity(0.3)),
+              border: Border.all(color: (batchReady ? kSuccess : kWarning).withOpacity(0.28)),
             ),
             child: Text(
               batchReady
@@ -453,7 +476,7 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
               onPressed: () => Navigator.push(context,
                   MaterialPageRoute(builder: (_) => const SendToAuthorityScreenHansika())),
               style: ElevatedButton.styleFrom(
-                backgroundColor: kWarning, foregroundColor: Colors.black,
+                backgroundColor: kSuccess, foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
               child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -467,13 +490,20 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
 
         SizedBox(
           width: double.infinity, height: 52,
-          child: ElevatedButton(
-            onPressed: _resetToForm,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: kPrimary, foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: const LinearGradient(colors: [kPrimary, kSecondary]),
             ),
-            child: const Text('Add Another Sign', style: TextStyle(fontWeight: FontWeight.w700)),
+            child: ElevatedButton(
+              onPressed: _resetToForm,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent, shadowColor: Colors.transparent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Text('Add Another Sign', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
           ),
         ),
         const SizedBox(height: 10),
@@ -482,10 +512,10 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
           child: OutlinedButton(
             onPressed: () => Navigator.pop(context),
             style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Colors.white24),
+              side: const BorderSide(color: Color(0xFFEDEFF5)),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
-            child: const Text('Done', style: TextStyle(color: Colors.white)),
+            child: const Text('Done', style: TextStyle(color: kInk)),
           ),
         ),
       ]),

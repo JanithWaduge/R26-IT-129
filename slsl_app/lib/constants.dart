@@ -27,10 +27,16 @@ const double kConfidenceThreshold = 0.60;
 // ================================================
 // UI COLORS
 // ================================================
-const Color kPrimary    = Color(0xFF00B4D8);
-const Color kAccent     = Color(0xFF90E0EF);
-const Color kBackground = Color(0xFF03045E);
-const Color kSurface    = Color(0xFF023E8A);
-const Color kSuccess    = Color(0xFF06D6A0);
-const Color kWarning    = Color(0xFFFFB703);
-const Color kError      = Color(0xFFEF233C);
+
+
+const Color kBackground = Color(0xFFFFFFFF);
+const Color kSurface    = Color(0xFFF6F8FC);
+const Color kInk        = Color(0xFF14162B);
+const Color kInkSoft    = Color(0xFF6B7280);
+
+const Color kPrimary    = Color(0xFF2F6BFF); // Signal Blue
+const Color kSecondary  = Color(0xFF8B5CF6); // Violet
+const Color kSuccess    = Color(0xFF10B981); // Green
+const Color kWarning    = Color(0xFFF59E0B); // Amber (kept for pending/batch states)
+const Color kError      = Color(0xFFF43F5E); // Coral (kept for delete/reject states)
+

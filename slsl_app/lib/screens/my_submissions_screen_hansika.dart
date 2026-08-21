@@ -57,19 +57,24 @@ class _MySubmissionsScreenHansikaState extends State<MySubmissionsScreenHansika>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: kSurface,
-        title: const Text('Delete Sign?', style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('Delete Sign?', style: TextStyle(color: kInk, fontWeight: FontWeight.w700)),
         content: Text(
           'This will permanently delete "$word". This cannot be undone.',
-          style: TextStyle(color: Colors.white.withOpacity(0.7)),
+          style: const TextStyle(color: kInkSoft),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: const Text('Cancel', style: TextStyle(color: kInkSoft)),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: kError),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kError,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Delete'),
           ),
@@ -83,7 +88,7 @@ class _MySubmissionsScreenHansikaState extends State<MySubmissionsScreenHansika>
       if (ok) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('"$word" deleted.'),
-          backgroundColor: kSurface,
+          backgroundColor: kInk,
         ));
         _load();
       } else {
@@ -102,8 +107,8 @@ class _MySubmissionsScreenHansikaState extends State<MySubmissionsScreenHansika>
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('My Submissions', style: TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text('My Submissions', style: TextStyle(color: kInk, fontWeight: FontWeight.w700)),
+        iconTheme: const IconThemeData(color: kInk),
       ),
       body: SafeArea(
         child: RefreshIndicator(
@@ -116,10 +121,10 @@ class _MySubmissionsScreenHansikaState extends State<MySubmissionsScreenHansika>
                       Padding(
                         padding: const EdgeInsets.all(40),
                         child: Column(children: [
-                          Icon(Icons.inbox_rounded, color: Colors.white.withOpacity(0.2), size: 56),
+                          Icon(Icons.inbox_rounded, color: kInkSoft.withOpacity(0.4), size: 56),
                           const SizedBox(height: 16),
-                          Text('No submissions yet',
-                              style: TextStyle(color: Colors.white.withOpacity(0.4))),
+                          const Text('No submissions yet',
+                              style: TextStyle(color: kInkSoft)),
                         ]),
                       ),
                     ])
@@ -147,12 +152,19 @@ class _MySubmissionsScreenHansikaState extends State<MySubmissionsScreenHansika>
                             margin: const EdgeInsets.only(bottom: 12),
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: color.withOpacity(0.06),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: color.withOpacity(0.25)),
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFEDEFF5)),
+                              boxShadow: [
+                                BoxShadow(color: color.withOpacity(0.10), blurRadius: 16, offset: const Offset(0, 8)),
+                              ],
                             ),
                             child: Row(children: [
-                              Icon(_statusIcon(status), color: color, size: 26),
+                              Container(
+                                width: 42, height: 42,
+                                decoration: BoxDecoration(color: color.withOpacity(0.14), shape: BoxShape.circle),
+                                child: Icon(_statusIcon(status), color: color, size: 22),
+                              ),
                               const SizedBox(width: 14),
                               Expanded(
                                 child: Column(
@@ -160,18 +172,18 @@ class _MySubmissionsScreenHansikaState extends State<MySubmissionsScreenHansika>
                                   children: [
                                     Text(word,
                                         style: const TextStyle(
-                                            color: Colors.white,
+                                            color: kInk,
                                             fontSize: 15,
                                             fontWeight: FontWeight.w700)),
                                     const SizedBox(height: 2),
                                     Text(s['sinhala_word'] ?? '',
-                                        style: TextStyle(
-                                            color: Colors.white.withOpacity(0.5), fontSize: 12)),
+                                        style: const TextStyle(
+                                            color: kInkSoft, fontSize: 12)),
                                     if (status == 'rejected' && s['rejection_reason'] != null) ...[
                                       const SizedBox(height: 6),
                                       Text('Reason: ${s['rejection_reason']}',
                                           style: TextStyle(
-                                              color: kError.withOpacity(0.8), fontSize: 11)),
+                                              color: kError.withOpacity(0.85), fontSize: 11)),
                                     ],
                                   ],
                                 ),
@@ -179,7 +191,7 @@ class _MySubmissionsScreenHansikaState extends State<MySubmissionsScreenHansika>
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                                 decoration: BoxDecoration(
-                                    color: color.withOpacity(0.15),
+                                    color: color.withOpacity(0.14),
                                     borderRadius: BorderRadius.circular(8)),
                                 child: Text(status.toString().toUpperCase(),
                                     style: TextStyle(
@@ -187,7 +199,7 @@ class _MySubmissionsScreenHansikaState extends State<MySubmissionsScreenHansika>
                               ),
                               IconButton(
                                 icon: Icon(Icons.delete_outline_rounded,
-                                    color: Colors.white.withOpacity(0.4), size: 20),
+                                    color: kInkSoft.withOpacity(0.7), size: 20),
                                 onPressed: () => _confirmDelete(id, word),
                               ),
                             ]),

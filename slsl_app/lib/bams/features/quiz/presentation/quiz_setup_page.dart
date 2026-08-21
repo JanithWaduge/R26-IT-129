@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/network/authenticated_api_client.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../vocabulary/data/vocabulary_api.dart';
 import '../../vocabulary/domain/curriculum_category.dart';
 import '../data/quiz_api.dart';
@@ -113,20 +114,33 @@ class _QuizSetupPageState extends State<QuizSetupPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Watch each sign-language video '
-          'and select the correct meaning.',
+    return Theme(
+      data: AppTheme.light,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text(
+            'Watch each sign-language video '
+            'and select the correct meaning.',
+          ),
         ),
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Text(
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(
+                gradient: AppColors.primaryGradient,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.quiz, color: Colors.white, size: 32),
+            ),
+            const SizedBox(height: 16),
+            const Text(
               'Adaptive Quiz Setup',
-              style: Theme.of(context).textTheme.headlineMedium,
+              style: TextStyle(color: AppColors.ink, fontSize: 22, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -134,27 +148,31 @@ class _QuizSetupPageState extends State<QuizSetupPage> {
               'Productive mode will be enabled '
               'after the Objective 2 recognition '
               'adapter is connected.',
+              style: TextStyle(color: AppColors.inkSoft, fontSize: 13),
             ),
             const SizedBox(height: 24),
             if (_loadingCategories)
-              const Center(child: CircularProgressIndicator())
+              const Center(child: CircularProgressIndicator(color: AppColors.primary))
             else
               DropdownButtonFormField<String?>(
                 value: _selectedCategoryId,
+                style: const TextStyle(color: AppColors.ink, fontSize: 15),
+                dropdownColor: Colors.white,
                 decoration: const InputDecoration(
                   labelText: 'Category',
-                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.category_outlined, color: AppColors.primary),
                 ),
                 items: [
                   const DropdownMenuItem<String?>(
                     value: null,
-                    child: Text('All categories'),
+                    child: Text('All categories', style: TextStyle(color: AppColors.ink)),
                   ),
                   ..._categories.map((CurriculumCategory category) {
                     return DropdownMenuItem<String?>(
                       value: category.id,
                       child: Text(
                         category.name.forLanguage(widget.preferredLanguage),
+                        style: const TextStyle(color: AppColors.ink),
                       ),
                     );
                   }),
@@ -168,14 +186,25 @@ class _QuizSetupPageState extends State<QuizSetupPage> {
             const SizedBox(height: 16),
             DropdownButtonFormField<int>(
               value: _questionCount,
+              style: const TextStyle(color: AppColors.ink, fontSize: 15),
+              dropdownColor: Colors.white,
               decoration: const InputDecoration(
                 labelText: 'Number of questions',
-                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.format_list_numbered, color: AppColors.secondary),
               ),
               items: const [
-                DropdownMenuItem(value: 1, child: Text('1 question')),
-                DropdownMenuItem(value: 3, child: Text('3 questions')),
-                DropdownMenuItem(value: 5, child: Text('5 questions')),
+                DropdownMenuItem(
+                  value: 1,
+                  child: Text('1 question', style: TextStyle(color: AppColors.ink)),
+                ),
+                DropdownMenuItem(
+                  value: 3,
+                  child: Text('3 questions', style: TextStyle(color: AppColors.ink)),
+                ),
+                DropdownMenuItem(
+                  value: 5,
+                  child: Text('5 questions', style: TextStyle(color: AppColors.ink)),
+                ),
               ],
               onChanged: (value) {
                 if (value != null) {
@@ -188,18 +217,29 @@ class _QuizSetupPageState extends State<QuizSetupPage> {
             const SizedBox(height: 16),
             DropdownButtonFormField<int?>(
               value: _difficulty,
+              style: const TextStyle(color: AppColors.ink, fontSize: 15),
+              dropdownColor: Colors.white,
               decoration: const InputDecoration(
                 labelText: 'Difficulty',
-                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.speed, color: AppColors.success),
               ),
               items: const [
                 DropdownMenuItem<int?>(
                   value: null,
-                  child: Text('All difficulties'),
+                  child: Text('All difficulties', style: TextStyle(color: AppColors.ink)),
                 ),
-                DropdownMenuItem<int?>(value: 1, child: Text('Difficulty 1')),
-                DropdownMenuItem<int?>(value: 2, child: Text('Difficulty 2')),
-                DropdownMenuItem<int?>(value: 3, child: Text('Difficulty 3')),
+                DropdownMenuItem<int?>(
+                  value: 1,
+                  child: Text('Difficulty 1', style: TextStyle(color: AppColors.ink)),
+                ),
+                DropdownMenuItem<int?>(
+                  value: 2,
+                  child: Text('Difficulty 2', style: TextStyle(color: AppColors.ink)),
+                ),
+                DropdownMenuItem<int?>(
+                  value: 3,
+                  child: Text('Difficulty 3', style: TextStyle(color: AppColors.ink)),
+                ),
               ],
               onChanged: (value) {
                 setState(() {
@@ -210,23 +250,46 @@ class _QuizSetupPageState extends State<QuizSetupPage> {
             const SizedBox(height: 24),
             if (_error != null)
               Card(
+                color: AppColors.error.withOpacity(0.06),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  side: BorderSide(color: AppColors.error.withOpacity(0.25)),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Text(_error!, textAlign: TextAlign.center),
+                  child: Text(_error!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppColors.error)),
                 ),
               ),
-            FilledButton.icon(
-              onPressed: _startingQuiz ? null : _startQuiz,
-              icon: const Icon(Icons.play_arrow),
-              label: _startingQuiz
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Start Receptive Quiz'),
+            SizedBox(
+              height: 54,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  gradient: _startingQuiz ? null : AppColors.primaryGradient,
+                  color: _startingQuiz ? AppColors.hairline : null,
+                ),
+                child: FilledButton.icon(
+                  onPressed: _startingQuiz ? null : _startQuiz,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    disabledBackgroundColor: Colors.transparent,
+                  ),
+                  icon: const Icon(Icons.play_arrow),
+                  label: _startingQuiz
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Start Receptive Quiz'),
+                ),
+              ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );

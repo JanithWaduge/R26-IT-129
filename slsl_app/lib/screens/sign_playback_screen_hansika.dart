@@ -90,8 +90,8 @@ class _SignPlaybackScreenHansikaState extends State<SignPlaybackScreenHansika> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text(widget.englishWord, style: const TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text(widget.englishWord, style: const TextStyle(color: kInk, fontWeight: FontWeight.w700)),
+        iconTheme: const IconThemeData(color: kInk),
       ),
       body: SafeArea(
         child: _loading
@@ -99,16 +99,19 @@ class _SignPlaybackScreenHansikaState extends State<SignPlaybackScreenHansika> {
             : (_frames == null || _frames!.isEmpty)
                 ? Center(
                     child: Text('No recorded motion data found for this sign.',
-                        style: TextStyle(color: Colors.white.withOpacity(0.5))),
+                        style: const TextStyle(color: kInkSoft)),
                   )
                 : Column(children: [
                     Expanded(
                       child: Container(
                         margin: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: kSurface.withOpacity(0.3),
+                          color: kSurface,
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white12),
+                          border: Border.all(color: const Color(0xFFEDEFF5)),
+                          boxShadow: [
+                            BoxShadow(color: kPrimary.withOpacity(0.08), blurRadius: 22, offset: const Offset(0, 10)),
+                          ],
                         ),
                         child: CustomPaint(
                           painter: _HandSkeletonPainter(_frames![_currentFrame]),
@@ -119,28 +122,44 @@ class _SignPlaybackScreenHansikaState extends State<SignPlaybackScreenHansika> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                       child: Column(children: [
-                        Slider(
-                          value: _currentFrame.toDouble(),
-                          min: 0,
-                          max: (_frames!.length - 1).toDouble(),
-                          activeColor: kPrimary,
-                          inactiveColor: Colors.white12,
-                          onChanged: (v) {
-                            _playTimer?.cancel();
-                            _playing = false;
-                            setState(() => _currentFrame = v.round());
-                          },
+                        SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            activeTrackColor: kPrimary,
+                            inactiveTrackColor: const Color(0xFFEDEFF5),
+                            thumbColor: kPrimary,
+                            overlayColor: kPrimary.withOpacity(0.15),
+                          ),
+                          child: Slider(
+                            value: _currentFrame.toDouble(),
+                            min: 0,
+                            max: (_frames!.length - 1).toDouble(),
+                            onChanged: (v) {
+                              _playTimer?.cancel();
+                              _playing = false;
+                              setState(() => _currentFrame = v.round());
+                            },
+                          ),
                         ),
                         Text('Frame ${_currentFrame + 1} / ${_frames!.length}',
-                            style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
+                            style: const TextStyle(color: kInkSoft, fontSize: 12)),
                       ]),
                     ),
                     Padding(
                       padding: const EdgeInsets.only(bottom: 24),
-                      child: FloatingActionButton(
-                        backgroundColor: kPrimary,
-                        onPressed: _togglePlay,
-                        child: Icon(_playing ? Icons.pause : Icons.play_arrow, color: Colors.white),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(colors: [kPrimary, kSecondary]),
+                          boxShadow: [
+                            BoxShadow(color: kPrimary.withOpacity(0.35), blurRadius: 18, offset: const Offset(0, 8)),
+                          ],
+                        ),
+                        child: FloatingActionButton(
+                          backgroundColor: Colors.transparent,
+                          elevation: 0,
+                          onPressed: _togglePlay,
+                          child: Icon(_playing ? Icons.pause : Icons.play_arrow, color: Colors.white),
+                        ),
                       ),
                     ),
                   ]),

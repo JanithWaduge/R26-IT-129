@@ -367,6 +367,11 @@ class _CameraScreenState extends State<CameraScreen>
 
   // ════════════════════════════════════════════
   // BUILD
+  // Note: this screen is a full-bleed camera viewfinder, so — like every
+  // camera UI (Instagram, TikTok, Google Lens) — it intentionally stays on
+  // a dark canvas for contrast against the live feed, even though the rest
+  // of the app is now on a white background. Accents are the new brand
+  // blue / violet / green instead of the old flat palette.
   // ════════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
@@ -389,6 +394,8 @@ class _CameraScreenState extends State<CameraScreen>
 
   Widget _buildCameraPreview() {
     if (!_isCameraReady || _cameraController == null) {
+      // Not a full-bleed camera feed yet — sits on the app's own
+      // background, so it uses the light-theme text colors.
       return Container(
         color: kBackground,
         child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -397,7 +404,7 @@ class _CameraScreenState extends State<CameraScreen>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Text(_statusText,
-                style: const TextStyle(color: Colors.white70),
+                style: const TextStyle(color: kInkSoft),
                 textAlign: TextAlign.center),
           ),
         ])),
@@ -420,7 +427,7 @@ class _CameraScreenState extends State<CameraScreen>
       top: 0, left: 0, right: 0,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter, end: Alignment.bottomCenter,
             colors: [Colors.black87, Colors.transparent],
@@ -456,14 +463,14 @@ class _CameraScreenState extends State<CameraScreen>
             decoration: BoxDecoration(
               color: Colors.black54,
               borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: _isFrontCamera ? kAccent.withOpacity(0.7) : kPrimary.withOpacity(0.7)),
+              border: Border.all(color: _isFrontCamera ? kSecondary.withOpacity(0.7) : kPrimary.withOpacity(0.7)),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               _camOption(Icons.camera_rear_rounded, 'Back',  !_isFrontCamera, kPrimary),
               const SizedBox(width: 8),
               Container(width: 1, height: 18, color: Colors.white24),
               const SizedBox(width: 8),
-              _camOption(Icons.camera_front_rounded, 'Front', _isFrontCamera, kAccent),
+              _camOption(Icons.camera_front_rounded, 'Front', _isFrontCamera, kSecondary),
             ]),
           ),
         ),
@@ -594,33 +601,45 @@ class _CameraScreenState extends State<CameraScreen>
               ),
             ),
 
-          GestureDetector(
-            onTap: (_isCapturing || _isProcessing || !_serverOnline) ? null : _startCapture,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 74, height: 74,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _isProcessing ? Colors.white24
-                    : _isCapturing ? kError.withOpacity(0.8)
-                    : !_serverOnline ? Colors.grey
-                    : _mode == DetectionMode.comparison ? kWarning
-                    : _mode == DetectionMode.modelA ? kError
-                    : kPrimary,
-                border: Border.all(color: Colors.white, width: 3),
-                boxShadow: [BoxShadow(
-                  color: (_isCapturing ? kError : kPrimary).withOpacity(0.5),
-                  blurRadius: 20,
-                )],
+          Builder(builder: (context) {
+            final baseColor = _isCapturing
+                ? kError
+                : _mode == DetectionMode.comparison
+                    ? kWarning
+                    : _mode == DetectionMode.modelA
+                        ? kError
+                        : kPrimary;
+            final canPress = !(_isCapturing || _isProcessing || !_serverOnline);
+            return GestureDetector(
+              onTap: canPress ? _startCapture : null,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 74, height: 74,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: (_isProcessing || !_serverOnline)
+                      ? null
+                      : LinearGradient(colors: [baseColor, baseColor == kPrimary ? kSecondary : baseColor.withOpacity(0.7)]),
+                  color: _isProcessing
+                      ? Colors.white24
+                      : !_serverOnline
+                          ? Colors.grey
+                          : null,
+                  border: Border.all(color: Colors.white, width: 3),
+                  boxShadow: [BoxShadow(
+                    color: (_isCapturing ? kError : kPrimary).withOpacity(0.5),
+                    blurRadius: 20,
+                  )],
+                ),
+                child: Icon(
+                  _isProcessing ? Icons.hourglass_empty_rounded
+                      : _isCapturing ? Icons.stop_rounded
+                      : Icons.fiber_manual_record_rounded,
+                  color: Colors.white, size: 32,
+                ),
               ),
-              child: Icon(
-                _isProcessing ? Icons.hourglass_empty_rounded
-                    : _isCapturing ? Icons.stop_rounded
-                    : Icons.fiber_manual_record_rounded,
-                color: Colors.white, size: 32,
-              ),
-            ),
-          ),
+            );
+          }),
 
           if (!_serverOnline && !_isCapturing)
             Padding(
@@ -636,7 +655,7 @@ class _CameraScreenState extends State<CameraScreen>
 
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Text(_isFrontCamera ? '📷 Front' : '📸 Back',
-              style: TextStyle(color: _isFrontCamera ? kAccent : kPrimary, fontSize: 11)),
+              style: TextStyle(color: _isFrontCamera ? kSecondary : kPrimary, fontSize: 11)),
           const SizedBox(width: 12),
           Icon(Icons.circle, size: 8, color: _serverOnline ? kSuccess : kError),
           const SizedBox(width: 4),

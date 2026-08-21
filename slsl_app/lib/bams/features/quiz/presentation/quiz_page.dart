@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/network/authenticated_api_client.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../gamification/domain/gamification_models.dart';
 import '../data/quiz_api.dart';
 import '../domain/quiz_session.dart';
@@ -97,7 +98,7 @@ class _QuizPageState extends State<QuizPage> {
 
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      ).showSnackBar(SnackBar(content: Text(error.message), backgroundColor: AppColors.error));
 
       _startQuestionTimer();
     }
@@ -130,7 +131,7 @@ class _QuizPageState extends State<QuizPage> {
 
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      ).showSnackBar(SnackBar(content: Text(error.message), backgroundColor: AppColors.error));
     }
   }
 
@@ -178,7 +179,7 @@ class _QuizPageState extends State<QuizPage> {
 
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      ).showSnackBar(SnackBar(content: Text(error.message), backgroundColor: AppColors.error));
     }
   }
 
@@ -197,10 +198,13 @@ class _QuizPageState extends State<QuizPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Leave quiz?'),
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Text('Leave quiz?', style: TextStyle(color: AppColors.ink)),
           content: const Text(
             'The current session will be '
             'marked as abandoned.',
+            style: TextStyle(color: AppColors.inkSoft),
           ),
           actions: [
             TextButton(
@@ -210,6 +214,7 @@ class _QuizPageState extends State<QuizPage> {
               child: const Text('Continue'),
             ),
             FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.error),
               onPressed: () {
                 Navigator.of(context).pop(true);
               },
@@ -229,6 +234,17 @@ class _QuizPageState extends State<QuizPage> {
     return false;
   }
 
+  Widget _pill(String text, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withOpacity(0.28)),
+        ),
+        child: Text(text,
+            style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+      );
+
   @override
   Widget build(BuildContext context) {
     final QuizQuestion? question = _session.currentQuestion;
@@ -247,6 +263,7 @@ class _QuizPageState extends State<QuizPage> {
         }
       },
       child: Scaffold(
+        backgroundColor: AppColors.background,
         appBar: AppBar(
           title: Text(
             'Question '
@@ -256,68 +273,41 @@ class _QuizPageState extends State<QuizPage> {
         ),
         body: SafeArea(
           child: question == null
-              ? const Center(child: Text('No current question.'))
+              ? const Center(
+                  child: Text('No current question.',
+                      style: TextStyle(color: AppColors.inkSoft)))
               : ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
-                    LinearProgressIndicator(
-                      value: _session.progressPercentage / 100,
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: LinearProgressIndicator(
+                        value: _session.progressPercentage / 100,
+                        backgroundColor: AppColors.hairline,
+                        valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+                        minHeight: 8,
+                      ),
                     ),
                     const SizedBox(height: 20),
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
-                        Chip(label: Text(question.categoryName)),
-                        const SizedBox(width: 8),
-                        Chip(
-                          label: Text(
-                            'Difficulty '
-                            '${question.difficulty}',
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Chip(
-                          label: Text(
-                            question.wasDue
-                                ? 'Due Review'
-                                : 'Adaptive Practice',
-                          ),
+                        _pill(question.categoryName, AppColors.primary),
+                        _pill('Difficulty ${question.difficulty}', AppColors.secondary),
+                        _pill(
+                          question.wasDue ? 'Due Review' : 'Adaptive Practice',
+                          question.wasDue ? AppColors.warning : AppColors.success,
                         ),
                       ],
                     ),
+                    const SizedBox(height: 10),
                     Text(
                       'Selected because: '
                       '${question.selectionReason.replaceAll('_', ' ')}',
+                      style: const TextStyle(color: AppColors.inkSoft, fontSize: 12),
                     ),
                     const SizedBox(height: 20),
-                    // Container(
-                    //   height: 230,
-                    //   decoration: BoxDecoration(
-                    //     borderRadius: BorderRadius.circular(20),
-                    //     border: Border.all(),
-                    //   ),
-                    //   child: Center(
-                    //     child: Column(
-                    //       mainAxisSize: MainAxisSize.min,
-                    //       children: [
-                    //         Icon(
-                    //           question.mediaUri == null
-                    //               ? Icons.video_library_outlined
-                    //               : Icons.play_circle,
-                    //           size: 72,
-                    //         ),
-                    //         const SizedBox(height: 12),
-                    //         Text(
-                    //           question.mediaUri == null
-                    //               ? 'Development placeholder: '
-                    //                     'validated sign media '
-                    //                     'is pending.'
-                    //               : 'Sign media available',
-                    //           textAlign: TextAlign.center,
-                    //         ),
-                    //       ],
-                    //     ),
-                    //   ),
-                    // ),
                     if (question.mediaUri != null &&
                         question.mediaUri!.isNotEmpty)
                       SignVideoPlayer(
@@ -330,18 +320,21 @@ class _QuizPageState extends State<QuizPage> {
                       Container(
                         height: 230,
                         decoration: BoxDecoration(
+                          color: AppColors.surface,
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(),
+                          border: Border.all(color: AppColors.hairline),
                         ),
                         child: const Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.video_library_outlined, size: 72),
+                              Icon(Icons.video_library_outlined,
+                                  size: 64, color: AppColors.inkSoft),
                               SizedBox(height: 12),
                               Text(
                                 'No sign video is attached '
                                 'to this question.',
+                                style: TextStyle(color: AppColors.inkSoft),
                                 textAlign: TextAlign.center,
                               ),
                             ],
@@ -349,9 +342,10 @@ class _QuizPageState extends State<QuizPage> {
                         ),
                       ),
                     const SizedBox(height: 20),
-                    Text(
+                    const Text(
                       'Select the correct meaning',
-                      style: Theme.of(context).textTheme.titleLarge,
+                      style: TextStyle(
+                          color: AppColors.ink, fontSize: 18, fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 12),
                     ...question.options.map((QuizOption option) {
@@ -363,6 +357,13 @@ class _QuizPageState extends State<QuizPage> {
                               : () {
                                   _submitAnswer(option);
                                 },
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: AppColors.ink,
+                            side: const BorderSide(color: AppColors.hairline),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
+                          ),
                           child: Padding(
                             padding: const EdgeInsets.all(16),
                             child: Text(option.text),
@@ -376,6 +377,7 @@ class _QuizPageState extends State<QuizPage> {
                       '${question.attemptNumber} • '
                       '${question.remainingAttempts} '
                       'attempts remaining',
+                      style: const TextStyle(color: AppColors.inkSoft, fontSize: 12),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 16),
@@ -384,6 +386,12 @@ class _QuizPageState extends State<QuizPage> {
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: _submitting ? null : _requestHint,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.warning,
+                              side: BorderSide(color: AppColors.warning.withOpacity(0.5)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                            ),
                             icon: const Icon(Icons.lightbulb),
                             label: const Text('Hint'),
                           ),
@@ -392,6 +400,12 @@ class _QuizPageState extends State<QuizPage> {
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: _submitting ? null : _skip,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.secondary,
+                              side: BorderSide(color: AppColors.secondary.withOpacity(0.5)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                            ),
                             icon: const Icon(Icons.skip_next),
                             label: const Text('Skip'),
                           ),
@@ -401,7 +415,8 @@ class _QuizPageState extends State<QuizPage> {
                     if (_submitting)
                       const Padding(
                         padding: EdgeInsets.all(24),
-                        child: Center(child: CircularProgressIndicator()),
+                        child: Center(
+                            child: CircularProgressIndicator(color: AppColors.primary)),
                       ),
                   ],
                 ),

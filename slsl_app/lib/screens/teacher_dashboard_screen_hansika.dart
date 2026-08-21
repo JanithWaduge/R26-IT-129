@@ -43,26 +43,33 @@ class _TeacherDashboardScreenHansikaState
         builder: (context, setDialogState) {
           String? error;
           return AlertDialog(
-            backgroundColor: kSurface,
-            title: const Text('Teacher Details', style: TextStyle(color: Colors.white)),
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            title: const Text('Teacher Details', style: TextStyle(color: kInk, fontWeight: FontWeight.w700)),
             content: Column(mainAxisSize: MainAxisSize.min, children: [
               TextField(
                 controller: nameController,
                 autofocus: true,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
+                style: const TextStyle(color: kInk),
+                decoration: InputDecoration(
                   hintText: 'Your name',
-                  hintStyle: TextStyle(color: Colors.white38),
+                  hintStyle: const TextStyle(color: kInkSoft),
+                  filled: true,
+                  fillColor: kSurface,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
+                style: const TextStyle(color: kInk),
+                decoration: InputDecoration(
                   hintText: 'Your email (for approval updates)',
-                  hintStyle: TextStyle(color: Colors.white38),
+                  hintStyle: const TextStyle(color: kInkSoft),
+                  filled: true,
+                  fillColor: kSurface,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 ),
               ),
               if (error != null) ...[
@@ -71,22 +78,29 @@ class _TeacherDashboardScreenHansikaState
               ],
             ]),
             actions: [
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: kPrimary),
-                onPressed: () {
-                  final email = emailController.text.trim();
-                  if (!email.contains('@') || !email.contains('.')) {
-                    setDialogState(() => error = 'Please enter a valid email address.');
-                    return;
-                  }
-                  TeacherSession.teacherId = nameController.text.trim().isEmpty
-                      ? 'teacher_${DateTime.now().millisecondsSinceEpoch}'
-                      : nameController.text.trim();
-                  TeacherSession.teacherEmail = email;
-                  Navigator.pop(context);
-                  _loadData();
-                },
-                child: const Text('Continue'),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kPrimary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () {
+                    final email = emailController.text.trim();
+                    if (!email.contains('@') || !email.contains('.')) {
+                      setDialogState(() => error = 'Please enter a valid email address.');
+                      return;
+                    }
+                    TeacherSession.teacherId = nameController.text.trim().isEmpty
+                        ? 'teacher_${DateTime.now().millisecondsSinceEpoch}'
+                        : nameController.text.trim();
+                    TeacherSession.teacherEmail = email;
+                    Navigator.pop(context);
+                    _loadData();
+                  },
+                  child: const Text('Continue'),
+                ),
               ),
             ],
           );
@@ -169,13 +183,13 @@ class _TeacherDashboardScreenHansikaState
   Widget _buildHeader(BuildContext context) {
     return Row(children: [
       IconButton(
-        icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white54, size: 20),
+        icon: const Icon(Icons.arrow_back_ios_rounded, color: kInkSoft, size: 20),
         onPressed: () => Navigator.maybePop(context),
       ),
       const SizedBox(width: 4),
       const Expanded(
         child: Text('Teacher Dashboard',
-            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+            style: TextStyle(color: kInk, fontSize: 20, fontWeight: FontWeight.w800)),
       ),
     ]);
   }
@@ -188,25 +202,27 @@ class _TeacherDashboardScreenHansikaState
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [const Color(0xFFFFB703).withOpacity(0.18), const Color(0xFFFB8500).withOpacity(0.08)],
+          colors: [kPrimary, kSecondary],
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFFFB703).withOpacity(0.25)),
+        boxShadow: [
+          BoxShadow(color: kPrimary.withOpacity(0.28), blurRadius: 26, offset: const Offset(0, 12)),
+        ],
       ),
       child: Row(children: [
         Container(
           width: 52, height: 52,
           decoration: BoxDecoration(
-            color: const Color(0xFFFFB703).withOpacity(0.15),
+            color: Colors.white.withOpacity(0.18),
             borderRadius: BorderRadius.circular(16),
           ),
-          child: const Icon(Icons.school_rounded, color: Color(0xFFFFB703), size: 26),
+          child: const Icon(Icons.school_rounded, color: Colors.white, size: 26),
         ),
         const SizedBox(width: 14),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('$greeting,', style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12)),
+          Text('$greeting,', style: const TextStyle(color: Colors.white70, fontSize: 12)),
           Text(name, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
         ])),
       ]),
@@ -218,9 +234,9 @@ class _TeacherDashboardScreenHansikaState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withOpacity(0.25)),
       ),
       child: Row(children: [
         Icon(_serverOnline ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
@@ -246,30 +262,32 @@ class _TeacherDashboardScreenHansikaState
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.07),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: const Color(0xFFEDEFF5)),
+        boxShadow: [
+          BoxShadow(color: color.withOpacity(0.12), blurRadius: 16, offset: const Offset(0, 8)),
+        ],
       ),
       child: Column(children: [
         Icon(icon, color: color, size: 20),
         const SizedBox(height: 8),
         Text(value, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.w800)),
         const SizedBox(height: 2),
-        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11)),
+        Text(label, style: const TextStyle(color: kInkSoft, fontSize: 11)),
       ]),
     );
   }
 
   Widget _sectionLabel(String text) => Text(text,
-      style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 11,
-          fontWeight: FontWeight.w700, letterSpacing: 1.5));
+      style: const TextStyle(color: kInkSoft, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5));
 
   Widget _buildActionButtons(BuildContext context) {
     return Row(children: [
       Expanded(child: _actionCard(
         icon: Icons.add_circle_outline_rounded,
         label: 'Add New Sign',
-        color: const Color(0xFFFFB703),
+        color: kSecondary,
         onTap: () => Navigator.push(context,
             MaterialPageRoute(builder: (_) => const AddSignScreenHansika())),
       )),
@@ -295,14 +313,18 @@ class _TeacherDashboardScreenHansikaState
         decoration: BoxDecoration(
           color: kSuccess.withOpacity(0.08),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: kSuccess.withOpacity(0.25)),
+          border: Border.all(color: kSuccess.withOpacity(0.22)),
         ),
         child: Row(children: [
-          Icon(Icons.send_rounded, color: kSuccess, size: 22),
+          Container(
+            width: 34, height: 34,
+            decoration: BoxDecoration(color: kSuccess.withOpacity(0.16), shape: BoxShape.circle),
+            child: const Icon(Icons.send_rounded, color: kSuccess, size: 17),
+          ),
           const SizedBox(width: 12),
-          Expanded(child: Text('Send Pending Batch to Authority',
+          const Expanded(child: Text('Send Pending Batch to Authority',
               style: TextStyle(color: kSuccess, fontWeight: FontWeight.w700, fontSize: 13))),
-          Icon(Icons.arrow_forward_ios_rounded, color: kSuccess.withOpacity(0.7), size: 14),
+          const Icon(Icons.arrow_forward_ios_rounded, color: kSuccess, size: 14),
         ]),
       ),
     );
@@ -314,12 +336,22 @@ class _TeacherDashboardScreenHansikaState
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: color.withOpacity(0.3)),
+          border: Border.all(color: const Color(0xFFEDEFF5)),
+          boxShadow: [
+            BoxShadow(color: color.withOpacity(0.14), blurRadius: 18, offset: const Offset(0, 8)),
+          ],
         ),
         child: Column(children: [
-          Icon(icon, color: color, size: 26),
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [color, color.withOpacity(0.7)]),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: Colors.white, size: 20),
+          ),
           const SizedBox(height: 10),
           Text(label, textAlign: TextAlign.center,
               style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 13)),
@@ -337,9 +369,9 @@ class _TeacherDashboardScreenHansikaState
           onTap: () => Navigator.push(context,
               MaterialPageRoute(builder: (_) => const MySubmissionsScreenHansika())),
           child: Row(children: [
-            Text('View All', style: TextStyle(color: kPrimary.withOpacity(0.8), fontSize: 12, fontWeight: FontWeight.w600)),
+            Text('View All', style: TextStyle(color: kPrimary.withOpacity(0.85), fontSize: 12, fontWeight: FontWeight.w600)),
             const SizedBox(width: 2),
-            Icon(Icons.arrow_forward_ios_rounded, size: 10, color: kPrimary.withOpacity(0.8)),
+            Icon(Icons.arrow_forward_ios_rounded, size: 10, color: kPrimary.withOpacity(0.85)),
           ]),
         ),
       ]),
@@ -349,9 +381,9 @@ class _TeacherDashboardScreenHansikaState
       else if (recent.isEmpty)
         Container(
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(color: Colors.white.withOpacity(0.03), borderRadius: BorderRadius.circular(14)),
-          child: Text('No submissions yet — add your first sign above.',
-              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12)),
+          decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(14)),
+          child: const Text('No submissions yet — add your first sign above.',
+              style: TextStyle(color: kInkSoft, fontSize: 12)),
         )
       else
         Column(children: recent.map((s) {
@@ -363,15 +395,16 @@ class _TeacherDashboardScreenHansikaState
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.06),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: color.withOpacity(0.2)),
+              border: Border.all(color: const Color(0xFFEDEFF5)),
+              boxShadow: [BoxShadow(color: color.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 6))],
             ),
             child: Row(children: [
               Icon(icon, color: color, size: 18),
               const SizedBox(width: 10),
               Expanded(child: Text(s['english_word'] ?? '',
-                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600))),
+                  style: const TextStyle(color: kInk, fontSize: 13, fontWeight: FontWeight.w600))),
               Text(status.toString().toUpperCase(),
                   style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700)),
             ]),
@@ -384,13 +417,13 @@ class _TeacherDashboardScreenHansikaState
     return Column(children: [
       TextField(
         onChanged: (v) => setState(() => _searchQuery = v),
-        style: const TextStyle(color: Colors.white, fontSize: 13),
+        style: const TextStyle(color: kInk, fontSize: 13),
         decoration: InputDecoration(
           hintText: 'Search signs...',
-          hintStyle: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 13),
-          prefixIcon: Icon(Icons.search_rounded, color: Colors.white.withOpacity(0.4), size: 20),
+          hintStyle: const TextStyle(color: kInkSoft, fontSize: 13),
+          prefixIcon: const Icon(Icons.search_rounded, color: kInkSoft, size: 20),
           filled: true,
-          fillColor: kSurface.withOpacity(0.3),
+          fillColor: kSurface,
           contentPadding: const EdgeInsets.symmetric(vertical: 12),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
         ),
@@ -413,12 +446,12 @@ class _TeacherDashboardScreenHansikaState
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFFFB703).withOpacity(0.15) : Colors.white.withOpacity(0.04),
+          color: selected ? kPrimary.withOpacity(0.12) : kSurface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: selected ? const Color(0xFFFFB703) : Colors.white12),
+          border: Border.all(color: selected ? kPrimary : const Color(0xFFEDEFF5)),
         ),
         child: Text(label, style: TextStyle(
-            color: selected ? const Color(0xFFFFB703) : Colors.white54,
+            color: selected ? kPrimary : kInkSoft,
             fontSize: 12, fontWeight: FontWeight.w600)),
       ),
     );
@@ -433,13 +466,12 @@ class _TeacherDashboardScreenHansikaState
       else if (filtered.isEmpty)
         Container(
           padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: Colors.white.withOpacity(0.03),
-              borderRadius: BorderRadius.circular(14)),
+          decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(14)),
           child: Text(
               _vocabulary.isEmpty
                   ? 'No teacher-submitted signs approved yet.'
                   : 'No signs match your search.',
-              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12)),
+              style: const TextStyle(color: kInkSoft, fontSize: 12)),
         )
       else
         Wrap(
@@ -447,12 +479,12 @@ class _TeacherDashboardScreenHansikaState
           children: filtered.map((v) => Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFB703).withOpacity(0.08),
+              color: kPrimary.withOpacity(0.08),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFFFB703).withOpacity(0.25)),
+              border: Border.all(color: kPrimary.withOpacity(0.2)),
             ),
             child: Text('${v['english_word']} · ${v['sinhala_word'] ?? ''}',
-                style: const TextStyle(color: Color(0xFFFFB703), fontSize: 12,
+                style: const TextStyle(color: kPrimary, fontSize: 12,
                     fontWeight: FontWeight.w600)),
           )).toList(),
         ),

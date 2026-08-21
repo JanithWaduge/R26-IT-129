@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/network/authenticated_api_client.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../quiz/presentation/quiz_page.dart';
 import '../data/review_api.dart';
 import '../domain/review_models.dart';
@@ -107,10 +108,15 @@ class _ReviewPageState extends State<ReviewPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Review Due')),
-      body: SafeArea(
-        child: RefreshIndicator(onRefresh: _load, child: _body(context)),
+    return Theme(
+      data: AppTheme.light,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(title: const Text('Review Due')),
+        body: SafeArea(
+          child: RefreshIndicator(
+              onRefresh: _load, color: AppColors.primary, child: _body(context)),
+        ),
       ),
     );
   }
@@ -120,7 +126,7 @@ class _ReviewPageState extends State<ReviewPage> {
       return ListView(
         children: const [
           SizedBox(height: 180),
-          Center(child: CircularProgressIndicator()),
+          Center(child: CircularProgressIndicator(color: AppColors.primary)),
         ],
       );
     }
@@ -128,7 +134,9 @@ class _ReviewPageState extends State<ReviewPage> {
       return ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Text(_error!, textAlign: TextAlign.center),
+          Text(_error!,
+              textAlign: TextAlign.center, style: const TextStyle(color: AppColors.inkSoft)),
+          const SizedBox(height: 12),
           FilledButton(onPressed: _load, child: const Text('Try Again')),
         ],
       );
@@ -138,34 +146,59 @@ class _ReviewPageState extends State<ReviewPage> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                Text(
-                  '${overview.totalDueDirections}',
-                  style: Theme.of(context).textTheme.displayMedium,
-                ),
-                const Text('Review directions due'),
-                Text(
-                  'Receptive ${overview.receptiveDue} • Productive ${overview.productiveDue} • Overdue ${overview.overdueDirections}',
-                ),
-              ],
-            ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            gradient: AppColors.primaryGradient,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                  color: AppColors.primary.withOpacity(0.28),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10)),
+            ],
+          ),
+          child: Column(
+            children: [
+              Text(
+                '${overview.totalDueDirections}',
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 40, fontWeight: FontWeight.w800),
+              ),
+              const Text('Review directions due',
+                  style: TextStyle(color: Colors.white70, fontSize: 13)),
+              const SizedBox(height: 10),
+              Text(
+                'Receptive ${overview.receptiveDue} • Productive ${overview.productiveDue} • Overdue ${overview.overdueDirections}',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
           value: _mode,
+          style: const TextStyle(color: AppColors.ink, fontSize: 15),
+          dropdownColor: Colors.white,
           decoration: const InputDecoration(
             labelText: 'Review mode',
-            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.tune, color: AppColors.secondary),
           ),
           items: const [
-            DropdownMenuItem(value: 'mixed', child: Text('Mixed')),
-            DropdownMenuItem(value: 'receptive', child: Text('Receptive')),
-            DropdownMenuItem(value: 'productive', child: Text('Productive')),
+            DropdownMenuItem(
+              value: 'mixed',
+              child: Text('Mixed', style: TextStyle(color: AppColors.ink)),
+            ),
+            DropdownMenuItem(
+              value: 'receptive',
+              child: Text('Receptive', style: TextStyle(color: AppColors.ink)),
+            ),
+            DropdownMenuItem(
+              value: 'productive',
+              child: Text('Productive', style: TextStyle(color: AppColors.ink)),
+            ),
           ],
           onChanged: (value) {
             if (value != null) {
@@ -175,22 +208,49 @@ class _ReviewPageState extends State<ReviewPage> {
           },
         ),
         const SizedBox(height: 16),
-        FilledButton.icon(
-          onPressed: due.totalItems == 0 || _starting ? null : _startReview,
-          icon: const Icon(Icons.replay),
-          label: Text(
-            _starting
-                ? 'Starting...'
-                : 'Start Due Review (${due.totalItems > 5 ? 5 : due.totalItems})',
+        SizedBox(
+          height: 52,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: (due.totalItems == 0 || _starting) ? null : AppColors.primaryGradient,
+              color: (due.totalItems == 0 || _starting) ? AppColors.hairline : null,
+            ),
+            child: FilledButton.icon(
+              onPressed: due.totalItems == 0 || _starting ? null : _startReview,
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                disabledBackgroundColor: Colors.transparent,
+              ),
+              icon: const Icon(Icons.replay),
+              label: Text(
+                _starting
+                    ? 'Starting...'
+                    : 'Start Due Review (${due.totalItems > 5 ? 5 : due.totalItems})',
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 20),
         ...due.items.map(
           (item) => Card(
+            margin: const EdgeInsets.only(bottom: 10),
             child: ListTile(
-              title: Text(item.meanings.forLanguage(widget.preferredLanguage)),
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withOpacity(0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.schedule, color: AppColors.warning, size: 20),
+              ),
+              title: Text(item.meanings.forLanguage(widget.preferredLanguage),
+                  style: const TextStyle(color: AppColors.ink, fontWeight: FontWeight.w600)),
               subtitle: Text(
                 '${item.direction} • ${_label(item.selectionReason)}\nMastery ${(item.masteryScore * 100).round()}% • Priority ${item.priorityScore.toStringAsFixed(1)}',
+                style: const TextStyle(color: AppColors.inkSoft, fontSize: 12),
               ),
             ),
           ),
