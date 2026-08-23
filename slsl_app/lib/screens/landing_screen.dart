@@ -282,8 +282,10 @@ class _LandingScreenState extends State<LandingScreen>
             child: _sectionLabel('HOW GESTURE RECOGNITION WORKS'),
           ),
           const SizedBox(height: 20),
+          // Fixed, content-hugging height — the old 172px box combined with
+          // two Spacer()s left a large empty gap when the text was short.
           SizedBox(
-            height: 172,
+            height: 142,
             child: ListView.separated(
               padding: const EdgeInsets.only(right: 24),
               scrollDirection: Axis.horizontal,
@@ -306,8 +308,8 @@ class _LandingScreenState extends State<LandingScreen>
 
   Widget _stepCard(String step, IconData icon, String title, String body, Color color) {
     return Container(
-      width: 180,
-      padding: const EdgeInsets.all(16),
+      width: 152,
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: _white,
         borderRadius: BorderRadius.circular(18),
@@ -316,22 +318,32 @@ class _LandingScreenState extends State<LandingScreen>
           BoxShadow(color: color.withOpacity(0.10), blurRadius: 18, offset: const Offset(0, 8)),
         ],
       ),
+      // No Spacer() here — a Column with mainAxisSize.min sized to its
+      // content keeps the card compact instead of stretching to fill height.
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 16),
+              ),
+              const Spacer(),
               Text(step,
                   style: TextStyle(
                       color: color.withOpacity(0.4),
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1)),
-              const Spacer(),
-              Icon(icon, color: color, size: 20),
             ],
           ),
-          const Spacer(),
+          const SizedBox(height: 14),
           Text(title, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
           Text(body,

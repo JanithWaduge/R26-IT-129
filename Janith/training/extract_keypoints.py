@@ -25,8 +25,8 @@ import pandas as pd
 # PATHS
 # ================================================
 DATASET1_PATH = r'D:\R26-IT-129\Janith\dataset'
-DATASET2_ZIP  = r'D:\R26-IT-129\Janith\dataset2.zip'   # zip directly use කරනවා
-DATASET2_PATH = r'D:\R26-IT-129\Janith\dataset2'        # extracted folder (if exists)
+DATASET2_ZIP  = r'D:\R26-IT-129\Janith\dataset2.zip'   # optional fallback
+DATASET2_PATH = r'D:\R26-IT-129\Janith\dataset2'       # extracted folder (preferred)
 OUTPUT_CSV    = r'D:\R26-IT-129\Janith\keypoints_data.csv'
 
 # ================================================
