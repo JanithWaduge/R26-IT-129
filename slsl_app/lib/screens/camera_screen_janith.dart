@@ -7,7 +7,10 @@ import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 import '../constants.dart';
 
-enum DetectionMode { modelB, modelA, comparison }
+// CHANGED: DetectionMode enum removed. Every capture now always runs
+// BOTH Model A (no filter) and Model B (with filter) from a single
+// input — there's no mode to pick anymore, so there's nothing to
+// switch or forget to switch before testing.
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -27,15 +30,21 @@ class _CameraScreenState extends State<CameraScreen>
   bool _isProcessing = false;
   bool _serverOnline = false;
 
-  DetectionMode _mode = DetectionMode.modelB;
-
   final List<Uint8List> _rawFrames = [];
 
-  DetectionResult?  _lastResult;
-  ComparisonResult? _comparisonResult;
+  // CHANGED: single result type now — always holds both models' output.
+  DualResult? _result;
   String _statusText      = 'Connecting to server...';
   double _captureProgress = 0.0;
   int    _countdown       = 3;
+
+  // CHANGED: session-level counters (reset on hot restart / app reopen).
+  // These are live, honest, non-ground-truth diagnostics — NOT the
+  // research false-positive rate (see constants.dart for that).
+  int _sessionTests           = 0;
+  int _sessionAgreements      = 0;
+  int _sessionModelATriggered = 0; // Model A confidence >= threshold
+  int _sessionModelBTriggered = 0; // Model B confidence >= threshold
 
   // ── Capture config ───────────────────────────
   static const int kCaptureFrames     = 15;
@@ -133,8 +142,7 @@ class _CameraScreenState extends State<CameraScreen>
       _isProcessing     = false;
       _rawFrames.clear();
       _captureProgress  = 0.0;
-      _lastResult       = null;
-      _comparisonResult = null;
+      _result           = null;
       _isFrontCamera    = !_isFrontCamera;
     });
     await _setupCamera(_getCamera(_isFrontCamera));
@@ -150,8 +158,7 @@ class _CameraScreenState extends State<CameraScreen>
       _isCapturing      = true;
       _rawFrames.clear();
       _captureProgress  = 0.0;
-      _lastResult       = null;
-      _comparisonResult = null;
+      _result           = null;
       _countdown        = 2;
       _statusText       = '🖐 Sign hold කරන්න...';
     });
@@ -289,33 +296,36 @@ class _CameraScreenState extends State<CameraScreen>
     if (!mounted) return;
     setState(() => _statusText = 'Sign analyze කරනවා... 🔍');
 
-    final filterParam = _mode == DetectionMode.modelB ? 'true'
-        : _mode == DetectionMode.modelA ? 'false' : 'both';
-
+    // CHANGED: always request both models from one capture — no mode to pick.
     try {
       final res = await http.post(
-        Uri.parse('$kServerUrl/predict_sequence?filter=$filterParam'),
+        Uri.parse('$kServerUrl/predict_sequence?filter=both'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'frames': frameBuffer}),
       ).timeout(const Duration(seconds: 15));
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        if (_mode == DetectionMode.comparison) {
-          setState(() {
-            _comparisonResult = ComparisonResult(
-              validFrames: data['valid_frames'] ?? handDetectedCount,
-              modelA: _parseResult(data['model_a'], handDetectedCount),
-              modelB: _parseResult(data['model_b'], handDetectedCount),
-            );
-            _statusText = 'Comparison complete! 🎓';
-          });
-        } else {
-          setState(() {
-            _lastResult = _parseResult(data, handDetectedCount);
-            _statusText = 'Sign detected! 🎉';
-          });
-        }
+        final modelA = _parseResult(data['model_a'], handDetectedCount);
+        final modelB = _parseResult(data['model_b'], handDetectedCount);
+        final agree  = data['agreement'] ?? (modelA.label == modelB.label);
+
+        setState(() {
+          _result = DualResult(
+            validFrames: data['valid_frames'] ?? handDetectedCount,
+            modelA: modelA,
+            modelB: modelB,
+            agreement: agree,
+          );
+          // Session-level live diagnostics (not the research FPR — see
+          // constants.dart for the offline-validated figures).
+          _sessionTests++;
+          if (agree) _sessionAgreements++;
+          if (modelA.confidence >= kConfidenceThreshold) _sessionModelATriggered++;
+          if (modelB.confidence >= kConfidenceThreshold) _sessionModelBTriggered++;
+
+          _statusText = 'Sign detected! 🎉';
+        });
       } else {
         setState(() => _statusText = 'Server error — try again');
       }
@@ -341,13 +351,14 @@ class _CameraScreenState extends State<CameraScreen>
       confidence: (e['confidence'] as num).toDouble(),
     )).toList();
     return DetectionResult(
-      label      : data['label'] ?? 'Unknown',
-      sinhala    : data['sinhala'] ?? '',
-      confidence : (data['confidence'] as num? ?? 0.0).toDouble(),
-      top3       : top3,
-      handFrames : handFrames,
-      totalFrames: kCaptureFrames,
-      filtered   : data['filtered'] ?? false,
+      label         : data['label'] ?? 'Unknown',
+      sinhala       : data['sinhala'] ?? '',
+      confidence    : (data['confidence'] as num? ?? 0.0).toDouble(),
+      top3          : top3,
+      handFrames    : handFrames,
+      totalFrames   : kCaptureFrames,
+      filtered      : data['filtered'] ?? false,
+      framesRemoved : (data['frames_removed'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -357,8 +368,7 @@ class _CameraScreenState extends State<CameraScreen>
       _isProcessing     = false;
       _rawFrames.clear();
       _captureProgress  = 0.0;
-      _lastResult       = null;
-      _comparisonResult = null;
+      _result           = null;
       _statusText       = _serverOnline
           ? 'Ready — Capture button press කරන්න'
           : 'Server offline — PC server start කරන්න';
@@ -575,14 +585,13 @@ class _CameraScreenState extends State<CameraScreen>
         ),
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        if (!_isCapturing && !_isProcessing) _buildModeSelector(),
+        // CHANGED: mode selector removed — every capture is always dual.
+        if (!_isCapturing && !_isProcessing && _result == null)
+          _buildResearchBadge(),
 
-        if (_mode == DetectionMode.comparison && _comparisonResult != null)
-          _buildComparisonCard()
-        else if (_lastResult != null)
-          _buildResultCard(_lastResult!),
+        if (_result != null) _buildDualResultCard(_result!),
 
-        if (_lastResult != null || _comparisonResult != null) const SizedBox(height: 10),
+        if (_result != null) const SizedBox(height: 10),
 
         if (!_isProcessing && !_isCapturing)
           Text(_statusText,
@@ -591,7 +600,7 @@ class _CameraScreenState extends State<CameraScreen>
         const SizedBox(height: 18),
 
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          if (_lastResult != null || _comparisonResult != null || _isCapturing)
+          if (_result != null || _isCapturing)
             Padding(
               padding: const EdgeInsets.only(right: 24),
               child: _circleBtn(
@@ -602,13 +611,7 @@ class _CameraScreenState extends State<CameraScreen>
             ),
 
           Builder(builder: (context) {
-            final baseColor = _isCapturing
-                ? kError
-                : _mode == DetectionMode.comparison
-                    ? kWarning
-                    : _mode == DetectionMode.modelA
-                        ? kError
-                        : kPrimary;
+            final baseColor = _isCapturing ? kError : kPrimary;
             final canPress = !(_isCapturing || _isProcessing || !_serverOnline);
             return GestureDetector(
               onTap: canPress ? _startCapture : null,
@@ -666,165 +669,77 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  Widget _buildModeSelector() {
+  // CHANGED: _buildModeSelector / _modeBtn removed — there's no mode
+  // to pick anymore. Shown instead, before the first capture, is a
+  // small research-credential badge with the offline-validated numbers.
+  Widget _buildResearchBadge() {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.black54, borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: Row(children: [
-        _modeBtn(DetectionMode.modelB,     '🟢 Model B', 'With Filter', kSuccess),
-        _modeBtn(DetectionMode.modelA,     '🔴 Model A', 'No Filter',   kError),
-        _modeBtn(DetectionMode.comparison, '⚖️ Compare', 'A vs B',      kWarning),
-      ]),
-    );
-  }
-
-  Widget _modeBtn(DetectionMode mode, String title, String sub, Color color) {
-    final active = _mode == mode;
-    return Expanded(
-      child: GestureDetector(
-        onTap: _isCapturing ? null : () => setState(() {
-          _mode = mode; _lastResult = null; _comparisonResult = null;
-        }),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: active ? color.withOpacity(0.25) : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            border: active ? Border.all(color: color.withOpacity(0.6)) : null,
-          ),
-          child: Column(children: [
-            Text(title, textAlign: TextAlign.center,
-                style: TextStyle(color: active ? color : Colors.white54,
-                    fontSize: 11, fontWeight: active ? FontWeight.bold : FontWeight.normal)),
-            Text(sub, textAlign: TextAlign.center,
-                style: TextStyle(color: active ? color.withOpacity(0.8) : Colors.white30, fontSize: 9)),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildResultCard(DetectionResult r) {
-    final isHigh  = r.confidence >= kConfidenceThreshold;
-    final color   = isHigh ? kSuccess : kWarning;
-    final handPct = r.totalFrames > 0 ? r.handFrames / r.totalFrames : 0.0;
-
-    return Container(
-      width: double.infinity, padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.88), borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.6)),
+        border: Border.all(color: kWarning.withOpacity(0.35)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.sign_language, color: color, size: 20),
-          const SizedBox(width: 8),
-          Expanded(child: Text(r.label,
-              style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.bold))),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.2), borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: color.withOpacity(0.5)),
-            ),
-            child: Text('${(r.confidence * 100).toStringAsFixed(1)}%',
-                style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
-          ),
+        Row(children: const [
+          Icon(Icons.science_rounded, color: kWarning, size: 15),
+          SizedBox(width: 6),
+          Text('Validated noise filter (offline test)',
+              style: TextStyle(color: kWarning, fontSize: 11, fontWeight: FontWeight.bold)),
         ]),
-        const SizedBox(height: 8),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(color: kSurface.withOpacity(0.6), borderRadius: BorderRadius.circular(10)),
-          child: Row(children: [
-            const Text('🇱🇰 ', style: TextStyle(fontSize: 16)),
-            Expanded(child: Text(r.sinhala,
-                style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, height: 1.3))),
-          ]),
-        ),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-            value: r.confidence, backgroundColor: Colors.white12,
-            valueColor: AlwaysStoppedAnimation(color), minHeight: 4,
-          ),
-        ),
         const SizedBox(height: 6),
-        Row(children: [
-          Icon(Icons.back_hand_outlined, size: 13, color: handPct > 0.5 ? kSuccess : kWarning),
-          const SizedBox(width: 4),
-          Text('Hand: ${r.handFrames}/${r.totalFrames}',
-              style: TextStyle(color: handPct > 0.5 ? kSuccess : kWarning, fontSize: 11)),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: (r.filtered ? kSuccess : kError).withOpacity(0.2),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(r.filtered ? '🟢 Filter ON' : '🔴 Filter OFF',
-                style: TextStyle(color: r.filtered ? kSuccess : kError,
-                    fontSize: 10, fontWeight: FontWeight.bold)),
-          ),
-        ]),
-        if (r.top3.length > 1) ...[
-          const SizedBox(height: 8),
-          const Divider(color: Colors.white12, height: 1),
-          const SizedBox(height: 6),
-          const Text('Other possibilities:', style: TextStyle(color: Colors.white54, fontSize: 11)),
-          const SizedBox(height: 4),
-          ...r.top3.skip(1).map((t) => Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(children: [
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(t.label,  style: const TextStyle(color: Colors.white60, fontSize: 12)),
-                Text(t.sinhala, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-              ])),
-              Text('${(t.confidence * 100).toStringAsFixed(1)}%',
-                  style: const TextStyle(color: Colors.white38, fontSize: 12)),
-            ]),
-          )),
-        ],
+        Text(
+          'False positive rate: ${kResearchFprBaseline.toStringAsFixed(0)}% → '
+          '${kResearchFprFiltered.toStringAsFixed(0)}% '
+          '(${kResearchFprReductionPct.toStringAsFixed(1)}% reduction, '
+          'p=${kResearchPValue.toStringAsFixed(4)})',
+          style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.4),
+        ),
+        Text(
+          'Sign accuracy: ${kResearchSignAccuracy.toStringAsFixed(1)}% · $kResearchDatasetNote',
+          style: const TextStyle(color: Colors.white38, fontSize: 10),
+        ),
       ]),
     );
   }
 
-  Widget _buildComparisonCard() {
-    final c = _comparisonResult!;
+  // CHANGED: single merged card — always shows Model A and Model B
+  // from the SAME capture, side by side, plus a plain-language summary
+  // of what happened (agree = clean sign; disagree = filter caught
+  // something Model A didn't).
+  Widget _buildDualResultCard(DualResult r) {
     return Container(
       width: double.infinity, padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.92), borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kWarning.withOpacity(0.5)),
+        border: Border.all(color: (r.agreement ? kSuccess : kWarning).withOpacity(0.5)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Icon(Icons.science_rounded, color: kWarning, size: 18),
+          const Icon(Icons.sign_language, color: kPrimary, size: 18),
           const SizedBox(width: 8),
-          const Text('Research Comparison',
-              style: TextStyle(color: kWarning, fontSize: 15, fontWeight: FontWeight.bold)),
+          const Text('One capture — both models',
+              style: TextStyle(color: kPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
           const Spacer(),
-          Text('${c.validFrames} valid', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+          Text('${r.validFrames} hand frames',
+              style: const TextStyle(color: Colors.white38, fontSize: 11)),
         ]),
         const SizedBox(height: 10),
         Row(children: [
-          Expanded(child: _miniCard(c.modelA, 'Model A', 'Baseline\n(No Filter)', kError)),
+          Expanded(child: _modelCard(r.modelA, 'Model A', 'No Filter', kError)),
           const SizedBox(width: 8),
-          Expanded(child: _miniCard(c.modelB, 'Model B', 'Proposed\n(With Filter)', kSuccess)),
+          Expanded(child: _modelCard(r.modelB, 'Model B', 'With Filter', kSuccess)),
         ]),
         const SizedBox(height: 10),
-        _filterImpact(c.modelA, c.modelB),
+        _summaryStrip(r),
+        const SizedBox(height: 10),
+        _sessionStatsStrip(),
       ]),
     );
   }
 
-  Widget _miniCard(DetectionResult r, String name, String sub, Color color) {
+  Widget _modelCard(DetectionResult r, String name, String sub, Color color) {
+    final handPct = r.totalFrames > 0 ? r.handFrames / r.totalFrames : 0.0;
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -835,7 +750,7 @@ class _CameraScreenState extends State<CameraScreen>
         Text(name, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
         Text(sub,  style: TextStyle(color: color.withOpacity(0.7), fontSize: 9)),
         const SizedBox(height: 6),
-        Text(r.label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+        Text(r.label, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
             maxLines: 1, overflow: TextOverflow.ellipsis),
         Text(r.sinhala, style: const TextStyle(color: Colors.white70, fontSize: 11),
             maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -849,16 +764,43 @@ class _CameraScreenState extends State<CameraScreen>
         ),
         const SizedBox(height: 4),
         Text('${(r.confidence * 100).toStringAsFixed(1)}%',
-            style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
+            style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 6),
+        Row(children: [
+          Icon(Icons.back_hand_outlined, size: 11, color: handPct > 0.5 ? kSuccess : kWarning),
+          const SizedBox(width: 3),
+          Text('${r.handFrames}/${r.totalFrames}',
+              style: TextStyle(color: handPct > 0.5 ? kSuccess : kWarning, fontSize: 10)),
+        ]),
+        if (r.filtered)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('🧹 ${r.framesRemoved} frame(s) filtered as noise',
+                style: const TextStyle(color: Colors.white54, fontSize: 9)),
+          ),
       ]),
     );
   }
 
-  Widget _filterImpact(DetectionResult a, DetectionResult b) {
-    final diff   = b.confidence - a.confidence;
-    final better = diff > 0;
-    final same   = a.label == b.label;
-    final color  = better ? kSuccess : kWarning;
+  // Plain-language read of THIS capture — this is the live behavior
+  // check you described: same sign → agree; noisy sign → Model B
+  // should stay confident/correct while Model A wavers or misfires.
+  Widget _summaryStrip(DualResult r) {
+    final color = r.agreement ? kSuccess : kWarning;
+    final removed = r.modelB.framesRemoved;
+    String message;
+    if (r.agreement && removed == 0) {
+      message = 'Clean sign — both models agree, filter found nothing to remove.';
+    } else if (r.agreement && removed > 0) {
+      message = 'Both models agree on "${r.modelA.label}", but the filter still '
+          'cleaned $removed noisy frame(s) before Model B classified.';
+    } else {
+      message = 'Models disagree: A says "${r.modelA.label}" '
+          '(${(r.modelA.confidence * 100).toStringAsFixed(0)}%), '
+          'B says "${r.modelB.label}" '
+          '(${(r.modelB.confidence * 100).toStringAsFixed(0)}%) after removing '
+          '$removed noisy frame(s) — likely unwanted movement in this capture.';
+    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -866,16 +808,38 @@ class _CameraScreenState extends State<CameraScreen>
         border: Border.all(color: color.withOpacity(0.4)),
       ),
       child: Row(children: [
-        Icon(better ? Icons.trending_up : Icons.trending_flat, color: color, size: 18),
+        Icon(r.agreement ? Icons.check_circle_outline : Icons.info_outline, color: color, size: 16),
         const SizedBox(width: 8),
-        Expanded(child: Text(
-          same
-              ? 'Both agree: "${a.label}"\nFilter improved by ${(diff * 100).abs().toStringAsFixed(1)}%'
-              : better
-                  ? 'Filter changed: "${a.label}" → "${b.label}"\nModel B: ${(b.confidence * 100).toStringAsFixed(1)}%'
-                  : 'Results differ — filter may need tuning',
-          style: TextStyle(color: color, fontSize: 11, height: 1.4),
-        )),
+        Expanded(child: Text(message,
+            style: TextStyle(color: color, fontSize: 11, height: 1.4))),
+      ]),
+    );
+  }
+
+  // Live, session-only counters — explicitly NOT the research FPR
+  // (that requires ground truth accidental data — see the badge above
+  // and constants.dart for the offline-measured figures).
+  Widget _sessionStatsStrip() {
+    if (_sessionTests == 0) return const SizedBox.shrink();
+    final agreePct = (_sessionAgreements / _sessionTests * 100);
+    final aTrigPct = (_sessionModelATriggered / _sessionTests * 100);
+    final bTrigPct = (_sessionModelBTriggered / _sessionTests * 100);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('This session ($_sessionTests test${_sessionTests == 1 ? "" : "s"})',
+            style: const TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 3),
+        Text(
+          'Agreement: ${agreePct.toStringAsFixed(0)}% · '
+          'A triggered: ${aTrigPct.toStringAsFixed(0)}% · '
+          'B triggered: ${bTrigPct.toStringAsFixed(0)}%',
+          style: const TextStyle(color: Colors.white54, fontSize: 10),
+        ),
       ]),
     );
   }
@@ -919,14 +883,20 @@ class DetectionResult {
   final List<Top3Item> top3;
   final int handFrames, totalFrames;
   final bool filtered;
+  final int framesRemoved; // ADDED: how many frames the filter dropped as noise
   DetectionResult({required this.label, required this.sinhala, required this.confidence,
-      required this.top3, required this.handFrames, required this.totalFrames, required this.filtered});
+      required this.top3, required this.handFrames, required this.totalFrames,
+      required this.filtered, this.framesRemoved = 0});
 }
 
-class ComparisonResult {
+// CHANGED: renamed from ComparisonResult — this is no longer an optional
+// "mode", it's the only result type. Added `agreement` from the server.
+class DualResult {
   final int validFrames;
   final DetectionResult modelA, modelB;
-  ComparisonResult({required this.validFrames, required this.modelA, required this.modelB});
+  final bool agreement;
+  DualResult({required this.validFrames, required this.modelA, required this.modelB,
+      required this.agreement});
 }
 
 class Top3Item {

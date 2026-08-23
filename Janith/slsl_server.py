@@ -159,6 +159,12 @@ def apply_noise_filter(sequence, threshold=NOISE_THRESHOLD):
     Step 2: Remove near-zero (no hand detected) frames from what's left.
     Step 3: Sample down to CAPTURE_FRAMES valid frames (or upsample if
              fewer than that), then zero-pad to SEQUENCE_LENGTH.
+    Returns (result_sequence, frames_removed) — frames_removed is how
+    many of the original frames were dropped as noise (low-velocity or
+    no-hand), used to show a live "filter cleaned N frames" diagnostic
+    in the app. This is a per-capture diagnostic, NOT the research
+    false-positive rate (that requires ground truth and is measured
+    offline in noise_filter_experiment.py).
     """
     # Step 1: velocity filter on the raw sequence
     if len(sequence) < 2:
@@ -174,9 +180,10 @@ def apply_noise_filter(sequence, threshold=NOISE_THRESHOLD):
 
     # Step 2: remove near-zero (no-hand) frames
     valid = [f for f in velocity_filtered if np.sum(np.abs(f)) > 0.01]
+    frames_removed = len(sequence) - len(valid)
 
     if len(valid) == 0:
-        return [[0.0] * 63] * SEQUENCE_LENGTH
+        return [[0.0] * 63] * SEQUENCE_LENGTH, frames_removed
 
     # Step 3: sample to CAPTURE_FRAMES, then zero-pad to SEQUENCE_LENGTH
     if len(valid) >= CAPTURE_FRAMES:
@@ -187,7 +194,7 @@ def apply_noise_filter(sequence, threshold=NOISE_THRESHOLD):
         sampled = [valid[int(round(i))] for i in indices]
 
     padding = [[0.0] * 63] * (SEQUENCE_LENGTH - CAPTURE_FRAMES)
-    return sampled + padding
+    return sampled + padding, frames_removed
 
 # ================================================
 # NORMALIZATION — Wrist-centered, scale-invariant
@@ -363,16 +370,19 @@ def predict_sequence():
 
         # ── Model B (proposed — with filter) ────────────
         def predict_with_filter():
-            filtered_frames = apply_noise_filter(frames)
+            filtered_frames, frames_removed = apply_noise_filter(frames)
             label, conf, top3 = run_inference(filtered_frames)
             sinhala = SINHALA_TRANSLATIONS.get(label, label)
             return {
-                'label'       : label,
-                'sinhala'     : sinhala,
-                'confidence'  : conf,
-                'top3'        : top3,
-                'filtered'    : True,
-                'valid_frames': valid_count,
+                'label'          : label,
+                'sinhala'        : sinhala,
+                'confidence'     : conf,
+                'top3'           : top3,
+                'filtered'       : True,
+                'valid_frames'   : valid_count,
+                'frames_removed' : frames_removed,  # live diagnostic: how many
+                                                     # frames the filter dropped
+                                                     # as noise on THIS capture
             }
 
         # ── Return based on filter mode ──────────────────
@@ -390,6 +400,7 @@ def predict_sequence():
                 'model_a'     : result_a,
                 'model_b'     : result_b,
                 'valid_frames': valid_count,
+                'agreement'   : result_a['label'] == result_b['label'],
             })
 
         else:  # filter='true' (default — Model B)
