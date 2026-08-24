@@ -4,22 +4,22 @@ Teacher Dashboard & Content Authoring — Backend
 ------------------------------------------------
 Endpoints:
   GET    /api/teacher/health
-  GET    /api/vocabulary
+  GET    /api/vocabulary                                   -- newly added (teacher-approved) signs
+  GET    /api/teacher/classroom-signs                       -- NEW: original 30 classroom signs (read-only)
   POST   /api/teacher/validate-frame        { image (base64) }
   POST   /api/teacher/submit-sign           { teacher_id, teacher_email, english_word, sinhala_word, category, frames }
   GET    /api/teacher/my-submissions/<teacher_id>
-  GET    /api/teacher/submission/<submission_id>          -- full detail incl. keypoints, for playback
+  GET    /api/teacher/submission/<submission_id>
   DELETE /api/teacher/delete-submission/<submission_id>
-  GET    /api/teacher/pending-batch                        -- also returns total_awaiting_decision
-  POST   /api/teacher/send-to-authority     { authority_email }
+  GET    /api/teacher/pending-batch                         -- now returns ALL not-yet-sent pending signs
+  POST   /api/teacher/send-to-authority     { authority_email, submission_ids: [...] }  -- CHANGED: selection-based
   GET    /api/authority/pending
-  POST   /api/authority/approve/<submission_id>   -- emails teacher back
-  POST   /api/authority/reject/<submission_id>    { reason }   -- emails teacher back
-  GET    /authority/review                        -- web page with Approve/Reject + animated
-                                                       hand-skeleton preview per sign
+  POST   /api/authority/approve/<submission_id>
+  POST   /api/authority/reject/<submission_id>    { reason }
+  GET    /authority/review
 
 Does NOT modify Janith's dataset, model, or server logic.
-Reads his keypoints_clean.csv read-only to check for duplicate signs.
+Reads his keypoints_clean.csv and models/classes.npy read-only.
 """
 
 from flask import Blueprint, request, jsonify, render_template_string
@@ -51,6 +51,21 @@ vocabulary = db["sign_vocabulary"]
 JANITH_CLEAN_CSV = os.path.join(
     os.path.dirname(__file__), '..', 'Janith', 'keypoints_clean.csv'
 )
+JANITH_CLASSES_NPY = os.path.join(
+    os.path.dirname(__file__), '..', 'Janith', 'models', 'classes.npy'
+)
+
+# Fallback list — matches Janith's SIGN_LABELS in slsl_server.py.
+# Only used if classes.npy isn't found on disk.
+FALLBACK_CLASSROOM_SIGNS = [
+    'Allocate', 'Answer', 'Answer Properly', 'Answer Sheet', 'Ask Question',
+    'Attend', 'Attending', 'Calculate', 'Cancel', 'Collaborating',
+    'Collect', 'Comparing', 'Concentrate', 'Continuing', 'Coordinate',
+    'Copying', 'Correct Mistake', 'Describe', 'Discuss', 'Discuss Topic',
+    'Distribute', 'Documenting', 'Grade', 'Practice', 'Research',
+    'Review', 'Study', 'Support', 'Teacher', 'Whiteboard Marker',
+]
+
 
 def get_existing_labels():
     """Reads Janith's cleaned dataset to get current sign labels. Read-only, never modifies it."""
@@ -79,15 +94,13 @@ teacher_pose_detector = mp_pose.Pose(
 teacher_mediapipe_lock = threading.Lock()
 
 # ================================================
-# VALIDATION THRESHOLDS — tune these after testing with real footage
+# VALIDATION THRESHOLDS
 # ================================================
 MIN_BRIGHTNESS = 60
 MAX_BRIGHTNESS = 220
 MAX_EDGE_DENSITY = 0.12
 KNEE_VISIBILITY_LIMIT = 0.5
 SHOULDER_VISIBILITY_MIN = 0.3
-
-BATCH_SIZE_FOR_AUTHORITY_EMAIL = 5
 
 # ================================================
 # VALIDATION CHECKS
@@ -133,7 +146,6 @@ def check_hand_visibility(hands_results):
 
 
 def run_validation(image_bgr):
-    """Runs all checks in order, returns first failure or success."""
     rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
     with teacher_mediapipe_lock:
@@ -153,7 +165,7 @@ def run_validation(image_bgr):
     return {"valid": True, "message": "Frame passed all validation checks."}
 
 # ================================================
-# EMAIL — generic sender, used both directions
+# EMAIL
 # ================================================
 def send_email(to_address, subject, body):
     smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
@@ -193,11 +205,6 @@ def teacher_health():
 
 @teacher_bp.route("/api/teacher/validate-frame", methods=["POST"])
 def validate_frame():
-    """
-    Called by Flutter during capture to give real-time feedback.
-    Request : { "image": "<base64 jpeg>" }
-    Response: { "valid": bool, "reason": str|null, "message": str }
-    """
     try:
         data = request.get_json()
         img_b64 = data.get("image", "")
@@ -218,9 +225,6 @@ def validate_frame():
 
 @teacher_bp.route("/api/teacher/submit-sign", methods=["POST"])
 def submit_sign():
-    """
-    Request : { teacher_id, teacher_email, english_word, sinhala_word, category, frames: [[63 floats] x 30] }
-    """
     try:
         data = request.json
         required_fields = ["teacher_id", "teacher_email", "english_word", "sinhala_word", "category", "frames"]
@@ -233,7 +237,6 @@ def submit_sign():
 
         label = data["english_word"].strip()
 
-        # ── Duplicate check against Janith's actual dataset ──
         existing_labels = get_existing_labels()
         if label.lower() in existing_labels:
             return jsonify({
@@ -242,7 +245,6 @@ def submit_sign():
                 "message": f"'{label}' already exists in the sign dataset."
             }), 409
 
-        # ── Duplicate check against already-approved teacher submissions ──
         if vocabulary.find_one({"english_word": {"$regex": f"^{label}$", "$options": "i"}}):
             return jsonify({
                 "status": "rejected",
@@ -262,15 +264,12 @@ def submit_sign():
             "notified_authority": False,
         }
         result = submissions.insert_one(doc)
-
         pending_count = submissions.count_documents({"status": "pending", "notified_authority": False})
-        batch_ready = pending_count >= BATCH_SIZE_FOR_AUTHORITY_EMAIL
 
         return jsonify({
             "submission_id": str(result.inserted_id),
             "status": "pending",
             "pending_batch_count": pending_count,
-            "batch_ready": batch_ready,
         }), 201
 
     except Exception as e:
@@ -311,31 +310,53 @@ def delete_submission(submission_id):
 
 @teacher_bp.route("/api/vocabulary", methods=["GET"])
 def get_vocabulary():
+    """Returns newly added (teacher-submitted, approved) signs only."""
     docs = list(vocabulary.find({}, {"_id": 0}))
     return jsonify(docs)
+
+
+# ================================================
+# NEW — Original 30 classroom signs (read-only reference)
+# ================================================
+@teacher_bp.route("/api/teacher/classroom-signs", methods=["GET"])
+def get_classroom_signs():
+    """
+    Returns the original classroom sign set the base model was trained on.
+    Reads Janith's saved label classes (models/classes.npy) if available —
+    this is read-only and never modifies his files. Falls back to a static
+    list matching his SIGN_LABELS if the file isn't found (e.g. before his
+    first training run).
+    """
+    if os.path.exists(JANITH_CLASSES_NPY):
+        try:
+            classes = np.load(JANITH_CLASSES_NPY, allow_pickle=True)
+            signs = sorted([str(c) for c in classes.tolist()])
+            return jsonify({"signs": signs, "source": "classes.npy"})
+        except Exception as e:
+            print(f"⚠️  Could not load classes.npy: {e} — using fallback list")
+
+    return jsonify({"signs": sorted(FALLBACK_CLASSROOM_SIGNS), "source": "fallback"})
 
 
 @teacher_bp.route("/api/teacher/pending-batch", methods=["GET"])
 def pending_batch():
     """
-    Response: { count, ready, signs, total_awaiting_decision }
-    - count: signs not yet emailed to authority
-    - total_awaiting_decision: ALL pending signs regardless of email status
-      (i.e. includes ones already emailed but not yet approved/rejected)
+    Response: { count, signs, total_awaiting_decision }
+    Returns ALL pending signs not yet sent to the authority — the Flutter
+    Send-to-Authority screen lets the teacher pick which ones to send via checkboxes.
     """
     pending_docs = list(
         submissions.find(
             {"status": "pending", "notified_authority": False},
-            {"english_word": 1, "category": 1, "teacher_id": 1}
-        ).limit(BATCH_SIZE_FOR_AUTHORITY_EMAIL)
+            {"english_word": 1, "category": 1, "teacher_id": 1, "sinhala_word": 1}
+        )
     )
-    count = submissions.count_documents({"status": "pending", "notified_authority": False})
+    count = len(pending_docs)
     total_awaiting_decision = submissions.count_documents({"status": "pending"})
     for d in pending_docs:
         d["_id"] = str(d["_id"])
     return jsonify({
         "count": count,
-        "ready": count >= BATCH_SIZE_FOR_AUTHORITY_EMAIL,
         "signs": pending_docs,
         "total_awaiting_decision": total_awaiting_decision,
     })
@@ -344,24 +365,35 @@ def pending_batch():
 @teacher_bp.route("/api/teacher/send-to-authority", methods=["POST"])
 def send_to_authority():
     """
-    Request : { "authority_email": "someone@example.com" }
+    Request : { "authority_email": "...", "submission_ids": ["<id1>", "<id2>", ...] }
+    Sends only the specific selected signs, not an automatic fixed batch.
     """
     try:
         data = request.json or {}
         authority_email = data.get("authority_email", "").strip()
+        submission_ids = data.get("submission_ids", [])
+
         if not authority_email or "@" not in authority_email:
             return jsonify({"error": "Please provide a valid email address."}), 400
 
-        pending_docs = list(
-            submissions.find({"status": "pending", "notified_authority": False})
-            .limit(BATCH_SIZE_FOR_AUTHORITY_EMAIL)
-        )
+        if not submission_ids:
+            return jsonify({"error": "Please select at least one sign to send."}), 400
+
+        try:
+            object_ids = [ObjectId(sid) for sid in submission_ids]
+        except Exception:
+            return jsonify({"error": "Invalid submission id(s)."}), 400
+
+        pending_docs = list(submissions.find({
+            "_id": {"$in": object_ids},
+            "status": "pending",
+            "notified_authority": False,
+        }))
 
         if not pending_docs:
-            return jsonify({"error": "No pending signs to send."}), 400
+            return jsonify({"error": "Selected signs are no longer available to send."}), 400
 
         review_link = f"{request.host_url}authority/review"
-
         lines = [
             f"- {d['english_word']} ({d['category']}) — submitted by {d['teacher_id']}"
             for d in pending_docs
@@ -371,7 +403,7 @@ def send_to_authority():
             + "\n".join(lines)
             + f"\n\nReview and approve/reject them here:\n{review_link}"
         )
-        subject = f"SLSL App: {len(pending_docs)} New Signs Awaiting Approval"
+        subject = f"SLSL App: {len(pending_docs)} New Sign(s) Awaiting Approval"
 
         sent = send_email(authority_email, subject, body)
 
@@ -386,7 +418,7 @@ def send_to_authority():
         return jsonify({
             "sent": sent,
             "count": len(pending_docs),
-            "message": f"Sent {len(pending_docs)} signs to {authority_email}."
+            "message": f"Sent {len(pending_docs)} sign(s) to {authority_email}."
                        if sent else "Email delivery failed — check SMTP configuration. Your signs are still pending and ready to resend."
         })
 
@@ -468,10 +500,6 @@ def reject_submission(submission_id):
 
 # ================================================
 # Simple web page for the Authority to review signs
-# No app install needed — just open this link in any browser.
-# Includes an animated hand-skeleton preview per sign,
-# reconstructed live from the stored MediaPipe keypoints
-# using an HTML5 canvas (no video is stored, only keypoints).
 # ================================================
 AUTHORITY_PAGE_TEMPLATE = """
 <!DOCTYPE html>
@@ -536,7 +564,6 @@ const HAND_CONNECTIONS = [
   [5,9],[9,13],[13,17],
 ];
 
-// Holds { id: { keypoints, frame, playing, canvas, ctx } } for every card
 const players = {};
 
 function initPlayer(id, keypointData) {

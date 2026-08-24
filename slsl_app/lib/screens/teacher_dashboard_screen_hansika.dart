@@ -5,7 +5,7 @@ import '../services/teacher_api_service.dart';
 import '../services/teacher_session.dart';
 import 'add_sign_screen_hansika.dart';
 import 'my_submissions_screen_hansika.dart';
-import 'send_to_authority_screen_hansika.dart'; // NEW
+import 'send_to_authority_screen_hansika.dart';
 
 class TeacherDashboardScreenHansika extends StatefulWidget {
   const TeacherDashboardScreenHansika({super.key});
@@ -17,7 +17,8 @@ class TeacherDashboardScreenHansika extends StatefulWidget {
 class _TeacherDashboardScreenHansikaState
     extends State<TeacherDashboardScreenHansika> {
   bool _serverOnline = false;
-  List<Map<String, dynamic>> _vocabulary = [];
+  List<Map<String, dynamic>> _vocabulary = []; // newly added (teacher-approved) signs
+  List<String> _classroomSigns = []; // NEW: original 30 classroom signs, read-only
   bool _loading = true;
 
   List<Map<String, dynamic>> _mySubmissions = [];
@@ -31,7 +32,6 @@ class _TeacherDashboardScreenHansikaState
     _loadData();
   }
 
-  // ── CHANGED: now collects email too (required by backend) ──
   Future<void> _ensureTeacherId() async {
     if (TeacherSession.teacherId != null && TeacherSession.teacherEmail != null) return;
     final nameController = TextEditingController();
@@ -113,6 +113,7 @@ class _TeacherDashboardScreenHansikaState
     if (mounted) setState(() => _loading = true);
     final online = await TeacherApiService.checkHealth();
     final vocab = await TeacherApiService.getVocabulary();
+    final classroomSigns = await TeacherApiService.getClassroomSigns(); // NEW
     final teacherId = TeacherSession.teacherId;
     final mine = teacherId != null
         ? await TeacherApiService.getMySubmissions(teacherId)
@@ -121,6 +122,7 @@ class _TeacherDashboardScreenHansikaState
     setState(() {
       _serverOnline = online;
       _vocabulary = vocab;
+      _classroomSigns = classroomSigns;
       _mySubmissions = mine;
       _loading = false;
     });
@@ -163,11 +165,15 @@ class _TeacherDashboardScreenHansikaState
               const SizedBox(height: 12),
               _buildActionButtons(context),
               const SizedBox(height: 12),
-              _buildSendToAuthorityCard(context), // NEW
+              _buildSendToAuthorityCard(context),
               const SizedBox(height: 28),
               _buildRecentActivitySection(context),
               const SizedBox(height: 28),
-              _sectionLabel('SIGN VOCABULARY'),
+              // ── NEW: classroom signs section (original 30, read-only) ──
+              _buildClassroomSignsSection(),
+              const SizedBox(height: 28),
+              // ── RENAMED: was "SIGN VOCABULARY", now clearly separated ──
+              _sectionLabel('NEWLY ADDED SIGNS'),
               const SizedBox(height: 12),
               _buildVocabularyFilters(),
               const SizedBox(height: 14),
@@ -302,7 +308,6 @@ class _TeacherDashboardScreenHansikaState
     ]);
   }
 
-  // ── NEW: full-width card linking to the send-to-authority screen ──
   Widget _buildSendToAuthorityCard(BuildContext context) {
     return GestureDetector(
       onTap: () => Navigator.push(context,
@@ -322,7 +327,8 @@ class _TeacherDashboardScreenHansikaState
             child: const Icon(Icons.send_rounded, color: kSuccess, size: 17),
           ),
           const SizedBox(width: 12),
-          const Expanded(child: Text('Send Pending Batch to Authority',
+          // ── CHANGED: label no longer implies a fixed "batch" size ──
+          const Expanded(child: Text('Send Pending Signs to Authority',
               style: TextStyle(color: kSuccess, fontWeight: FontWeight.w700, fontSize: 13))),
           const Icon(Icons.arrow_forward_ios_rounded, color: kSuccess, size: 14),
         ]),
@@ -410,6 +416,42 @@ class _TeacherDashboardScreenHansikaState
             ]),
           );
         }).toList()),
+    ]);
+  }
+
+  // ════════════════════════════════════════════
+  // NEW — Classroom Signs (original 30, read-only reference list)
+  // ════════════════════════════════════════════
+  Widget _buildClassroomSignsSection() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _sectionLabel('CLASSROOM SIGNS (${_classroomSigns.length})'),
+      const SizedBox(height: 4),
+      Text('The original sign set the recognition model was trained on.',
+          style: TextStyle(color: kInkSoft.withOpacity(0.8), fontSize: 11)),
+      const SizedBox(height: 12),
+      if (_loading)
+        const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(color: kPrimary)))
+      else if (_classroomSigns.isEmpty)
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(14)),
+          child: const Text('Classroom sign list not available right now.',
+              style: TextStyle(color: kInkSoft, fontSize: 12)),
+        )
+      else
+        Wrap(
+          spacing: 8, runSpacing: 8,
+          children: _classroomSigns.map((word) => Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: kInk.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: kInk.withOpacity(0.12)),
+            ),
+            child: Text(word,
+                style: const TextStyle(color: kInk, fontSize: 12, fontWeight: FontWeight.w600)),
+          )).toList(),
+        ),
     ]);
   }
 

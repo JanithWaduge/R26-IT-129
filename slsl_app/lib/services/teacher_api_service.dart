@@ -34,8 +34,6 @@ class TeacherApiService {
     }
   }
 
-  // Reuses Janith's existing /predict_frame endpoint (HTTP call only —
-  // his server code is untouched) to get 63 keypoints from a single JPEG frame.
   static Future<List<double>> extractKeypoints(String base64Image, int frameId) async {
     try {
       final res = await http
@@ -96,7 +94,6 @@ class TeacherApiService {
     return [];
   }
 
-  // ── NEW: full submission detail (includes keypoint_sequence), for playback ──
   static Future<Map<String, dynamic>?> getSubmissionDetail(String submissionId) async {
     try {
       final res = await http
@@ -107,7 +104,6 @@ class TeacherApiService {
     return null;
   }
 
-  // ── NEW: delete a submission ──
   static Future<bool> deleteSubmission(String submissionId) async {
     try {
       final res = await http
@@ -119,6 +115,7 @@ class TeacherApiService {
     }
   }
 
+  // ── CHANGED: this now returns only newly added (teacher-approved) signs ──
   static Future<List<Map<String, dynamic>>> getVocabulary() async {
     try {
       final res = await http
@@ -131,7 +128,21 @@ class TeacherApiService {
     return [];
   }
 
-  // ── CHANGED: now also returns total_awaiting_decision ──
+  // ── NEW: the original 30 classroom signs the base model was trained on ──
+  static Future<List<String>> getClassroomSigns() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$kServerUrl/api/teacher/classroom-signs'))
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        return List<String>.from(data['signs'] ?? []);
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  // ── CHANGED: returns ALL pending signs, no fixed batch size ──
   static Future<Map<String, dynamic>> getPendingBatch() async {
     try {
       final res = await http
@@ -141,16 +152,23 @@ class TeacherApiService {
         return jsonDecode(res.body);
       }
     } catch (_) {}
-    return {'count': 0, 'ready': false, 'signs': [], 'total_awaiting_decision': 0};
+    return {'count': 0, 'signs': [], 'total_awaiting_decision': 0};
   }
 
-  static Future<Map<String, dynamic>> sendToAuthority(String authorityEmail) async {
+  // ── CHANGED: now takes a list of selected submission ids ──
+  static Future<Map<String, dynamic>> sendToAuthority({
+    required String authorityEmail,
+    required List<String> submissionIds,
+  }) async {
     try {
       final res = await http
           .post(
             Uri.parse('$kServerUrl/api/teacher/send-to-authority'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'authority_email': authorityEmail}),
+            body: jsonEncode({
+              'authority_email': authorityEmail,
+              'submission_ids': submissionIds,
+            }),
           )
           .timeout(const Duration(seconds: 15));
       final data = jsonDecode(res.body);

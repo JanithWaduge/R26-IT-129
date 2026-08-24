@@ -15,10 +15,9 @@ class _SendToAuthorityScreenHansikaState
   final _emailController = TextEditingController();
   bool _loading = true;
   bool _sending = false;
-  int _count = 0;
-  bool _ready = false;
-  int _totalAwaitingDecision = 0;
   List<Map<String, dynamic>> _signs = [];
+  final Set<String> _selectedIds = {}; // ── NEW: tracks checked signs ──
+  int _totalAwaitingDecision = 0;
   Map<String, dynamic>? _result;
 
   @override
@@ -37,17 +36,39 @@ class _SendToAuthorityScreenHansikaState
     setState(() => _loading = true);
     final data = await TeacherApiService.getPendingBatch();
     if (!mounted) return;
+    final signs = List<Map<String, dynamic>>.from(data['signs'] ?? []);
     setState(() {
-      _count = data['count'] ?? 0;
-      _ready = data['ready'] == true;
-      _signs = List<Map<String, dynamic>>.from(data['signs'] ?? []);
+      _signs = signs;
       _totalAwaitingDecision = data['total_awaiting_decision'] ?? 0;
+      _selectedIds.clear();
       _loading = false;
     });
   }
 
   bool _isValidEmail(String email) =>
       email.contains('@') && email.contains('.') && email.trim().length > 5;
+
+  void _toggleSelect(String id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+    });
+  }
+
+  void _selectAll() {
+    setState(() {
+      if (_selectedIds.length == _signs.length) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds
+          ..clear()
+          ..addAll(_signs.map((s) => s['_id'].toString()));
+      }
+    });
+  }
 
   Future<void> _send() async {
     final email = _emailController.text.trim();
@@ -58,9 +79,19 @@ class _SendToAuthorityScreenHansikaState
       ));
       return;
     }
+    if (_selectedIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Select at least one sign to send.'),
+        backgroundColor: kError,
+      ));
+      return;
+    }
 
     setState(() => _sending = true);
-    final result = await TeacherApiService.sendToAuthority(email);
+    final result = await TeacherApiService.sendToAuthority(
+      authorityEmail: email,
+      submissionIds: _selectedIds.toList(),
+    );
     if (!mounted) return;
     setState(() {
       _sending = false;
@@ -89,155 +120,188 @@ class _SendToAuthorityScreenHansikaState
   }
 
   Widget _buildFormView() {
-    return ListView(
-      padding: const EdgeInsets.all(20),
+    final allSelected = _signs.isNotEmpty && _selectedIds.length == _signs.length;
+
+    return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: (_ready ? kSuccess : kWarning).withOpacity(0.08),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: (_ready ? kSuccess : kWarning).withOpacity(0.25)),
-          ),
-          child: Row(children: [
-            Container(
-              width: 46, height: 46,
-              decoration: BoxDecoration(
-                  color: (_ready ? kSuccess : kWarning).withOpacity(0.16), shape: BoxShape.circle),
-              child: Icon(_ready ? Icons.mark_email_read_rounded : Icons.hourglass_top_rounded,
-                  color: _ready ? kSuccess : kWarning, size: 24),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _ready ? 'Batch ready to send!' : 'Waiting for more signs',
-                    style: TextStyle(
-                        color: _ready ? kSuccess : kWarning,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 4),
-                  Text('$_count new sign${_count == 1 ? '' : 's'} not yet emailed',
-                      style: const TextStyle(color: kInkSoft, fontSize: 12)),
-                  // ── Clarifies the "0 pending" vs dashboard count confusion ──
-                  if (_count == 0 && _totalAwaitingDecision > 0) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      '$_totalAwaitingDecision sign${_totalAwaitingDecision == 1 ? '' : 's'} already sent, still awaiting the authority\'s decision.',
-                      style: const TextStyle(color: kInkSoft, fontSize: 11),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ]),
-        ),
-        const SizedBox(height: 24),
-        const Text('Signs in this batch',
-            style: TextStyle(
-                color: kInkSoft,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.5)),
-        const SizedBox(height: 12),
-        if (_signs.isEmpty)
-          Container(
+        Expanded(
+          child: ListView(
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(14)),
-            child: Text(
-              _totalAwaitingDecision > 0
-                  ? 'No new signs waiting to be sent — record more to start a new batch.'
-                  : 'No pending signs right now.',
-              style: const TextStyle(color: kInkSoft, fontSize: 12),
-            ),
-          )
-        else
-          ..._signs.map((s) => Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: kPrimary.withOpacity(0.18)),
-                  boxShadow: [
-                    BoxShadow(color: kPrimary.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4)),
-                  ],
+                  color: (_signs.isEmpty ? kWarning : kPrimary).withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: (_signs.isEmpty ? kWarning : kPrimary).withOpacity(0.25)),
                 ),
                 child: Row(children: [
-                  Icon(Icons.gesture_rounded, color: kPrimary, size: 18),
-                  const SizedBox(width: 10),
+                  Container(
+                    width: 46, height: 46,
+                    decoration: BoxDecoration(
+                        color: (_signs.isEmpty ? kWarning : kPrimary).withOpacity(0.16),
+                        shape: BoxShape.circle),
+                    child: Icon(
+                        _signs.isEmpty ? Icons.hourglass_top_rounded : Icons.mark_email_unread_rounded,
+                        color: _signs.isEmpty ? kWarning : kPrimary, size: 24),
+                  ),
+                  const SizedBox(width: 14),
                   Expanded(
-                      child: Text(s['english_word'] ?? '',
-                          style: const TextStyle(
-                              color: kInk, fontSize: 13, fontWeight: FontWeight.w600))),
-                  Text((s['category'] ?? '').toString().toUpperCase(),
-                      style: TextStyle(
-                          color: kPrimary.withOpacity(0.75),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700)),
-                ]),
-              )),
-        const SizedBox(height: 28),
-        const Text('Authority email',
-            style: TextStyle(
-                color: kInkSoft,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.5)),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _emailController,
-          keyboardType: TextInputType.emailAddress,
-          style: const TextStyle(color: kInk),
-          decoration: InputDecoration(
-            hintText: 'authority@school.lk',
-            hintStyle: const TextStyle(color: kInkSoft),
-            prefixIcon: const Icon(Icons.email_outlined, color: kPrimary),
-            filled: true,
-            fillColor: kSurface,
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-          ),
-        ),
-        const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          height: 54,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: (_signs.isEmpty || _sending)
-                  ? null
-                  : const LinearGradient(colors: [kPrimary, kSecondary]),
-              color: (_signs.isEmpty || _sending) ? const Color(0xFFEDEFF5) : null,
-            ),
-            child: ElevatedButton(
-              onPressed: (_signs.isEmpty || _sending) ? null : _send,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                disabledBackgroundColor: Colors.transparent,
-                foregroundColor: Colors.white,
-                disabledForegroundColor: kInkSoft,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              child: _sending
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.send_rounded),
-                        SizedBox(width: 10),
-                        Text('Send to Authority',
-                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                        Text(
+                          _signs.isEmpty ? 'No signs waiting to be sent' : '${_signs.length} sign(s) available to send',
+                          style: TextStyle(
+                              color: _signs.isEmpty ? kWarning : kPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 4),
+                        Text('${_selectedIds.length} selected',
+                            style: const TextStyle(color: kInkSoft, fontSize: 12)),
+                        if (_totalAwaitingDecision > _signs.length) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            '${_totalAwaitingDecision - _signs.length} sign(s) already sent, still awaiting the authority\'s decision.',
+                            style: const TextStyle(color: kInkSoft, fontSize: 11),
+                          ),
+                        ],
                       ],
                     ),
+                  ),
+                ]),
+              ),
+              const SizedBox(height: 24),
+              if (_signs.isNotEmpty)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Select signs to send',
+                        style: TextStyle(
+                            color: kInkSoft, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+                    TextButton(
+                      onPressed: _selectAll,
+                      child: Text(allSelected ? 'Deselect All' : 'Select All',
+                          style: const TextStyle(color: kPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                ),
+              const SizedBox(height: 8),
+              if (_signs.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(color: kSurface, borderRadius: BorderRadius.circular(14)),
+                  child: const Text(
+                    'Record a new sign first — it will appear here once submitted.',
+                    style: TextStyle(color: kInkSoft, fontSize: 12),
+                  ),
+                )
+              else
+                ..._signs.map((s) {
+                  final id = s['_id'].toString();
+                  final selected = _selectedIds.contains(id);
+                  return GestureDetector(
+                    onTap: () => _toggleSelect(id),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: selected ? kPrimary.withOpacity(0.08) : Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: selected ? kPrimary : const Color(0xFFEDEFF5)),
+                        boxShadow: [
+                          BoxShadow(color: kPrimary.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 3)),
+                        ],
+                      ),
+                      child: Row(children: [
+                        Checkbox(
+                          value: selected,
+                          activeColor: kPrimary,
+                          onChanged: (_) => _toggleSelect(id),
+                        ),
+                        Icon(Icons.gesture_rounded, color: kPrimary, size: 18),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(s['english_word'] ?? '',
+                                  style: const TextStyle(color: kInk, fontSize: 13, fontWeight: FontWeight.w600)),
+                              if (s['sinhala_word'] != null)
+                                Text(s['sinhala_word'],
+                                    style: const TextStyle(color: kInkSoft, fontSize: 11)),
+                            ],
+                          ),
+                        ),
+                        Text((s['category'] ?? '').toString().toUpperCase(),
+                            style: TextStyle(
+                                color: kPrimary.withOpacity(0.75), fontSize: 10, fontWeight: FontWeight.w700)),
+                      ]),
+                    ),
+                  );
+                }),
+              const SizedBox(height: 24),
+              const Text('Authority email',
+                  style: TextStyle(color: kInkSoft, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                style: const TextStyle(color: kInk),
+                decoration: InputDecoration(
+                  hintText: 'authority@school.lk',
+                  hintStyle: const TextStyle(color: kInkSoft),
+                  prefixIcon: const Icon(Icons.email_outlined, color: kPrimary),
+                  filled: true,
+                  fillColor: kSurface,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: SizedBox(
+            width: double.infinity,
+            height: 54,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                gradient: (_selectedIds.isEmpty || _sending)
+                    ? null
+                    : const LinearGradient(colors: [kPrimary, kSecondary]),
+                color: (_selectedIds.isEmpty || _sending) ? const Color(0xFFEDEFF5) : null,
+              ),
+              child: ElevatedButton(
+                onPressed: (_selectedIds.isEmpty || _sending) ? null : _send,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  disabledBackgroundColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  disabledForegroundColor: kInkSoft,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: _sending
+                    ? const SizedBox(
+                        width: 22, height: 22,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.send_rounded),
+                          const SizedBox(width: 10),
+                          Text(
+                            _selectedIds.isEmpty
+                                ? 'Send to Authority'
+                                : 'Send ${_selectedIds.length} sign${_selectedIds.length == 1 ? '' : 's'} to Authority',
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                          ),
+                        ],
+                      ),
+              ),
             ),
           ),
         ),

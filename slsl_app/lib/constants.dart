@@ -25,37 +25,31 @@ const int    kNumKeypoints        = 63;
 const double kConfidenceThreshold = 0.60;
 
 // ================================================
-// UI COLORS
+// UI COLORS — white background, blue / violet / green accents
+// (matches landing_screen.dart, home_screen_janith.dart, and the
+// SLSL-BAMS module's app_colors.dart, so the whole app reads as one
+// product instead of two different themes)
 // ================================================
-const Color kPrimary    = Color(0xFF00B4D8);
-const Color kAccent     = Color(0xFF90E0EF);
-const Color kBackground = Color(0xFF03045E);
-const Color kSurface    = Color(0xFF023E8A);
-const Color kSuccess    = Color(0xFF06D6A0);
-const Color kWarning    = Color(0xFFFFB703);
-const Color kError      = Color(0xFFEF233C);
+const Color kBackground = Color(0xFFFFFFFF); // was 0xFF03045E (navy) — now white
+const Color kSurface    = Color(0xFFF6F8FC); // was 0xFF023E8A (blue) — now light card surface
+const Color kPrimary    = Color(0xFF2F6BFF); // was 0xFF00B4D8 (cyan) — now Signal Blue
+const Color kSecondary  = Color(0xFF8B5CF6); // was 0xFF7209B7 — now Violet, matches rest of app
+const Color kAccent     = Color(0xFF8B5CF6); // kept for any file still referencing kAccent; mirrors kSecondary
+const Color kSuccess    = Color(0xFF10B981); // was 0xFF06D6A0 — standardized green
+const Color kWarning    = Color(0xFFF59E0B); // was 0xFFFFB703 — standardized amber
+const Color kError      = Color(0xFFF43F5E); // was 0xFFEF233C — standardized coral
 
-// ================================================
-// ADDED — these were referenced in camera_screen_janith.dart
-// (front-camera accent, muted status text) but were missing from
-// this constants.dart, causing the kSecondary/kInkSoft errors.
-// ⚠️ If your actual project already has these defined with specific
-// values elsewhere (e.g. an AppColors/AppTheme file from the UI
-// redesign), replace these two lines with your real values instead —
-// these are reasonable placeholders that fit the existing palette,
-// not a guaranteed match to your intended design.
-// ================================================
-const Color kSecondary  = Color(0xFF7209B7); // violet accent — front camera / secondary highlight
-const Color kInkSoft    = Color(0xFFB8C4D9); // soft muted text, legible on kBackground
-const Color kInk        = Color(0xFF1A1A2E); // strong/primary text — headings, titles, dialog text on light surfaces
+const Color kInk        = Color(0xFF14162B); // primary text on white — headings, titles
+const Color kInkSoft    = Color(0xFF6B7280); // was 0xFFB8C4D9 (pale, made for dark bg —
+                                              // invisible on white); now a proper muted gray
 
 // ================================================
 // RESEARCH-VALIDATED METRICS (offline, from noise_filter_experiment.py)
-// ADDED: shown in the app as a credential ("this filter has been
-// measured to do X"), NOT computed live. A true false-positive rate
-// needs ground truth (real sign vs known-accidental movement), which
-// a single live capture never has — only the offline experiment with
-// synthetic accidental sequences can measure it honestly.
+// Shown in the app as a credential ("this filter has been measured to
+// do X"), NOT computed live. A true false-positive rate needs ground
+// truth (real sign vs known-accidental movement), which a single live
+// capture never has — only the offline experiment with synthetic
+// accidental sequences can measure it honestly.
 //
 // ⚠️ UPDATE THESE MANUALLY whenever you re-run
 // noise_filter_experiment.py with a retrained model, so the app never
