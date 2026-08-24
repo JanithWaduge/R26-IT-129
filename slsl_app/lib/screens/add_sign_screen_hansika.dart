@@ -8,7 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../constants.dart';
 import '../services/teacher_api_service.dart';
 import '../services/teacher_session.dart';
-import 'send_to_authority_screen_hansika.dart'; // NEW
+
 
 enum _Stage { metadataForm, liveValidation, capturing, processing, result }
 
@@ -411,28 +411,22 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
     );
   }
 
-  Widget _buildResultStage() {
+   Widget _buildResultStage() {
     final result = _submitResult ?? {};
     final status = result['status'];
     final isRejected = status == 'rejected' || result['error'] != null;
     final message = result['message'] ?? result['error'] ?? 'Something went wrong.';
-    // ── NEW: check if this submission completed a batch of 5 ──
-    final batchReady = result['batch_ready'] == true;
-    final batchCount = result['pending_batch_count'];
+
+    // ── NEW: motion duplicate warning ──
+    final motionWarning = result['motion_duplicate_warning'] == true;
+    final similarSigns = List<Map<String, dynamic>>.from(result['similar_signs'] ?? []);
 
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Container(
-          width: 96, height: 96,
-          decoration: BoxDecoration(
-            color: (isRejected ? kError : kSuccess).withOpacity(0.12),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            isRejected ? Icons.cancel_rounded : Icons.check_circle_rounded,
-            color: isRejected ? kError : kSuccess, size: 52,
-          ),
+        Icon(
+          isRejected ? Icons.cancel_rounded : Icons.check_circle_rounded,
+          color: isRejected ? kError : kSuccess, size: 72,
         ),
         const SizedBox(height: 20),
         Text(
@@ -445,65 +439,49 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
             style: const TextStyle(color: kInkSoft, fontSize: 13),
             textAlign: TextAlign.center),
 
-        // ── NEW: batch-ready banner ──
-        if (!isRejected && batchCount != null) ...[
+        // ── NEW: motion-duplicate warning card ──
+        if (!isRejected && motionWarning) ...[
           const SizedBox(height: 16),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: (batchReady ? kSuccess : kWarning).withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: (batchReady ? kSuccess : kWarning).withOpacity(0.28)),
+              color: kWarning.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: kWarning.withOpacity(0.3)),
             ),
-            child: Text(
-              batchReady
-                  ? '$batchCount signs collected — ready to send to authority!'
-                  : '$batchCount / 5 signs collected so far',
-              style: TextStyle(
-                  color: batchReady ? kSuccess : kWarning, fontSize: 12, fontWeight: FontWeight.w600),
-              textAlign: TextAlign.center,
-            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.warning_amber_rounded, color: kWarning, size: 20),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('Similar motion detected',
+                      style: TextStyle(color: kWarning, fontWeight: FontWeight.w700, fontSize: 13)),
+                ),
+              ]),
+              const SizedBox(height: 8),
+              ...similarSigns.map((s) => Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('• Similar to "${s['label']}"',
+                        style: const TextStyle(color: kInkSoft, fontSize: 12)),
+                  )),
+              const SizedBox(height: 6),
+              const Text('This has still been submitted — the authority will review it closely.',
+                  style: TextStyle(color: kInkSoft, fontSize: 11)),
+            ]),
           ),
         ],
 
         const SizedBox(height: 32),
-
-        // ── NEW: show "Send to Authority" button when batch is ready ──
-        if (batchReady)
-          SizedBox(
-            width: double.infinity, height: 52,
-            child: ElevatedButton(
-              onPressed: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const SendToAuthorityScreenHansika())),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kSuccess, foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(Icons.send_rounded),
-                SizedBox(width: 10),
-                Text('Send Batch to Authority', style: TextStyle(fontWeight: FontWeight.w700)),
-              ]),
-            ),
-          ),
-        if (batchReady) const SizedBox(height: 10),
-
         SizedBox(
           width: double.infinity, height: 52,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: const LinearGradient(colors: [kPrimary, kSecondary]),
+          child: ElevatedButton(
+            onPressed: _resetToForm,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kPrimary, foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
-            child: ElevatedButton(
-              onPressed: _resetToForm,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.transparent, shadowColor: Colors.transparent,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              child: const Text('Add Another Sign', style: TextStyle(fontWeight: FontWeight.w700)),
-            ),
+            child: const Text('Add Another Sign', style: TextStyle(fontWeight: FontWeight.w700)),
           ),
         ),
         const SizedBox(height: 10),
@@ -512,7 +490,7 @@ class _AddSignScreenHansikaState extends State<AddSignScreenHansika>
           child: OutlinedButton(
             onPressed: () => Navigator.pop(context),
             style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Color(0xFFEDEFF5)),
+              side: const BorderSide(color: Colors.white24),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
             child: const Text('Done', style: TextStyle(color: kInk)),

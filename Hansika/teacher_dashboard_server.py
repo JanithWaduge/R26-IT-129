@@ -2,30 +2,17 @@
 """
 Teacher Dashboard & Content Authoring — Backend
 ------------------------------------------------
-Endpoints:
-  GET    /api/teacher/health
-  GET    /api/vocabulary                                   -- newly added (teacher-approved) signs
-  GET    /api/teacher/classroom-signs                       -- NEW: original 30 classroom signs (read-only)
-  POST   /api/teacher/validate-frame        { image (base64) }
-  POST   /api/teacher/submit-sign           { teacher_id, teacher_email, english_word, sinhala_word, category, frames }
-  GET    /api/teacher/my-submissions/<teacher_id>
-  GET    /api/teacher/submission/<submission_id>
-  DELETE /api/teacher/delete-submission/<submission_id>
-  GET    /api/teacher/pending-batch                         -- now returns ALL not-yet-sent pending signs
-  POST   /api/teacher/send-to-authority     { authority_email, submission_ids: [...] }  -- CHANGED: selection-based
-  GET    /api/authority/pending
-  POST   /api/authority/approve/<submission_id>
-  POST   /api/authority/reject/<submission_id>    { reason }
-  GET    /authority/review
-
-Does NOT modify Janith's dataset, model, or server logic.
-Reads his keypoints_clean.csv and models/classes.npy read-only.
+NEW: DTW-based motion-duplicate detection — compares a new sign's actual
+hand-motion sequence against every approved sign's motion, catching
+duplicates even when the submitted word/label is completely different.
+This is separate from the simple label-matching duplicate check.
 """
 
 from flask import Blueprint, request, jsonify, render_template_string
 from pymongo import MongoClient
 from bson import ObjectId
 from datetime import datetime
+from fastdtw import fastdtw
 import cv2
 import numpy as np
 import mediapipe as mp
@@ -46,7 +33,7 @@ submissions = db["sign_submissions"]
 vocabulary = db["sign_vocabulary"]
 
 # ================================================
-# JANITH'S DATASET — READ-ONLY, for duplicate checking
+# JANITH'S DATASET — READ-ONLY
 # ================================================
 JANITH_CLEAN_CSV = os.path.join(
     os.path.dirname(__file__), '..', 'Janith', 'keypoints_clean.csv'
@@ -55,8 +42,6 @@ JANITH_CLASSES_NPY = os.path.join(
     os.path.dirname(__file__), '..', 'Janith', 'models', 'classes.npy'
 )
 
-# Fallback list — matches Janith's SIGN_LABELS in slsl_server.py.
-# Only used if classes.npy isn't found on disk.
 FALLBACK_CLASSROOM_SIGNS = [
     'Allocate', 'Answer', 'Answer Properly', 'Answer Sheet', 'Ask Question',
     'Attend', 'Attending', 'Calculate', 'Cancel', 'Collaborating',
@@ -68,28 +53,24 @@ FALLBACK_CLASSROOM_SIGNS = [
 
 
 def get_existing_labels():
-    """Reads Janith's cleaned dataset to get current sign labels. Read-only, never modifies it."""
     if not os.path.exists(JANITH_CLEAN_CSV):
-        print(f"⚠️  Janith's clean CSV not found at {JANITH_CLEAN_CSV} — duplicate check skipped")
+        print(f"⚠️  Janith's clean CSV not found — duplicate check skipped")
         return set()
     import pandas as pd
     df = pd.read_csv(JANITH_CLEAN_CSV, usecols=['label'])
     return set(df['label'].str.strip().str.lower())
 
 # ================================================
-# MEDIAPIPE — separate instances from Janith's, thread-safe
+# MEDIAPIPE
 # ================================================
 mp_hands = mp.solutions.hands
 mp_pose = mp.solutions.pose
 
 teacher_hands_detector = mp_hands.Hands(
-    static_image_mode=True,
-    max_num_hands=1,
-    min_detection_confidence=0.5,
+    static_image_mode=True, max_num_hands=1, min_detection_confidence=0.5,
 )
 teacher_pose_detector = mp_pose.Pose(
-    static_image_mode=True,
-    min_detection_confidence=0.5,
+    static_image_mode=True, min_detection_confidence=0.5,
 )
 teacher_mediapipe_lock = threading.Lock()
 
@@ -101,6 +82,55 @@ MAX_BRIGHTNESS = 220
 MAX_EDGE_DENSITY = 0.12
 KNEE_VISIBILITY_LIMIT = 0.5
 SHOULDER_VISIBILITY_MIN = 0.3
+
+# ================================================
+# NEW — DTW MOTION-DUPLICATE DETECTION
+# ================================================
+# This distance threshold needs calibration (run calibrate_dtw_threshold.py
+# and look at real distances between known-same vs known-different signs
+# in your own dataset before trusting this default value).
+DTW_DUPLICATE_THRESHOLD = 0.25
+
+
+def compute_dtw_distance(seq_a, seq_b):
+    """
+    Compares two hand-motion sequences (each a list of 30 frames x 63 keypoints)
+    using Dynamic Time Warping. Returns a distance normalized by sequence length
+    so results are comparable regardless of how fast/slow each was recorded.
+    Lower distance = more similar motion.
+    """
+    a = np.array(seq_a, dtype=float)
+    b = np.array(seq_b, dtype=float)
+    distance, _ = fastdtw(a, b, dist=lambda x, y: float(np.linalg.norm(x - y)))
+    return distance / max(len(a), len(b))
+
+
+def check_motion_duplicate(new_sequence, exclude_label=None):
+    """
+    Compares a new submission's motion against every already-approved sign's
+    stored motion. Returns a list of {label, distance} for any match under
+    the threshold, sorted by closest match first. Catches duplicates even
+    when the submitted word is completely different from the existing sign.
+    """
+    matches = []
+    approved_signs = vocabulary.find({}, {"english_word": 1, "keypoint_sequence": 1})
+
+    for doc in approved_signs:
+        if exclude_label and doc.get("english_word", "").lower() == exclude_label.lower():
+            continue
+        existing_seq = doc.get("keypoint_sequence")
+        if not existing_seq:
+            continue
+        try:
+            dist = compute_dtw_distance(new_sequence, existing_seq)
+        except Exception as e:
+            print(f"⚠️  DTW compare failed for '{doc.get('english_word')}': {e}")
+            continue
+        if dist <= DTW_DUPLICATE_THRESHOLD:
+            matches.append({"label": doc["english_word"], "distance": round(dist, 4)})
+
+    matches.sort(key=lambda m: m["distance"])
+    return matches
 
 # ================================================
 # VALIDATION CHECKS
@@ -127,11 +157,9 @@ def check_background(image_bgr):
 def check_body_framing(pose_results):
     if not pose_results.pose_landmarks:
         return False, "framing", "No person detected. Please position yourself in front of the camera."
-
     lm = pose_results.pose_landmarks.landmark
     knee_visibility = max(lm[25].visibility, lm[26].visibility)
     shoulder_visibility = max(lm[11].visibility, lm[12].visibility)
-
     if knee_visibility > KNEE_VISIBILITY_LIMIT:
         return False, "framing", "Too much of your body is visible. Move closer so only your upper body (head, shoulders, hands) shows."
     if shoulder_visibility < SHOULDER_VISIBILITY_MIN:
@@ -147,7 +175,6 @@ def check_hand_visibility(hands_results):
 
 def run_validation(image_bgr):
     rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-
     with teacher_mediapipe_lock:
         hands_results = teacher_hands_detector.process(rgb)
         pose_results = teacher_pose_detector.process(rgb)
@@ -225,6 +252,15 @@ def validate_frame():
 
 @teacher_bp.route("/api/teacher/submit-sign", methods=["POST"])
 def submit_sign():
+    """
+    Request : { teacher_id, teacher_email, english_word, sinhala_word, category, frames }
+
+    NEW: after label-based duplicate checks pass, the submission's motion is
+    compared against every approved sign using DTW. If a close motion match
+    is found, the submission is still saved (not blocked), but flagged with
+    motion_duplicate_warning=True and similar_signs=[...] so the Authority
+    can inspect it closely before approving.
+    """
     try:
         data = request.json
         required_fields = ["teacher_id", "teacher_email", "english_word", "sinhala_word", "category", "frames"]
@@ -236,7 +272,9 @@ def submit_sign():
             return jsonify({"error": "category must be 'noun' or 'verb'"}), 400
 
         label = data["english_word"].strip()
+        frames = data["frames"]
 
+        # ── Label-based duplicate check against Janith's dataset ──
         existing_labels = get_existing_labels()
         if label.lower() in existing_labels:
             return jsonify({
@@ -245,6 +283,7 @@ def submit_sign():
                 "message": f"'{label}' already exists in the sign dataset."
             }), 409
 
+        # ── Label-based duplicate check against approved teacher signs ──
         if vocabulary.find_one({"english_word": {"$regex": f"^{label}$", "$options": "i"}}):
             return jsonify({
                 "status": "rejected",
@@ -252,25 +291,34 @@ def submit_sign():
                 "message": f"'{label}' has already been approved and added previously."
             }), 409
 
+        # ── NEW: motion-based duplicate check (DTW) ──
+        motion_matches = check_motion_duplicate(frames, exclude_label=label)
+        has_motion_warning = len(motion_matches) > 0
+
         doc = {
             "teacher_id": data["teacher_id"],
             "teacher_email": data["teacher_email"],
             "english_word": label,
             "sinhala_word": data["sinhala_word"],
             "category": data["category"],
-            "keypoint_sequence": data["frames"],
+            "keypoint_sequence": frames,
             "status": "pending",
             "created_at": datetime.utcnow(),
             "notified_authority": False,
+            "motion_duplicate_warning": has_motion_warning,   # NEW
+            "similar_signs": motion_matches,                   # NEW
         }
         result = submissions.insert_one(doc)
         pending_count = submissions.count_documents({"status": "pending", "notified_authority": False})
 
-        return jsonify({
+        response = {
             "submission_id": str(result.inserted_id),
             "status": "pending",
             "pending_batch_count": pending_count,
-        }), 201
+            "motion_duplicate_warning": has_motion_warning,   # NEW
+            "similar_signs": motion_matches,                   # NEW
+        }
+        return jsonify(response), 201
 
     except Exception as e:
         print(f"❌ submit_sign error: {e}")
@@ -279,9 +327,13 @@ def submit_sign():
 
 @teacher_bp.route("/api/teacher/my-submissions/<teacher_id>", methods=["GET"])
 def my_submissions(teacher_id):
-    docs = list(submissions.find({"teacher_id": teacher_id}, {"keypoint_sequence": 0}))
+    docs = list(
+        submissions.find({"teacher_id": teacher_id}, {"keypoint_sequence": 0})
+        .sort("created_at", -1)
+    )
     for d in docs:
         d["_id"] = str(d["_id"])
+        d["created_at"] = d["created_at"].isoformat() if d.get("created_at") else None
     return jsonify(docs)
 
 
@@ -310,23 +362,12 @@ def delete_submission(submission_id):
 
 @teacher_bp.route("/api/vocabulary", methods=["GET"])
 def get_vocabulary():
-    """Returns newly added (teacher-submitted, approved) signs only."""
     docs = list(vocabulary.find({}, {"_id": 0}))
     return jsonify(docs)
 
 
-# ================================================
-# NEW — Original 30 classroom signs (read-only reference)
-# ================================================
 @teacher_bp.route("/api/teacher/classroom-signs", methods=["GET"])
 def get_classroom_signs():
-    """
-    Returns the original classroom sign set the base model was trained on.
-    Reads Janith's saved label classes (models/classes.npy) if available —
-    this is read-only and never modifies his files. Falls back to a static
-    list matching his SIGN_LABELS if the file isn't found (e.g. before his
-    first training run).
-    """
     if os.path.exists(JANITH_CLASSES_NPY):
         try:
             classes = np.load(JANITH_CLASSES_NPY, allow_pickle=True)
@@ -340,11 +381,6 @@ def get_classroom_signs():
 
 @teacher_bp.route("/api/teacher/pending-batch", methods=["GET"])
 def pending_batch():
-    """
-    Response: { count, signs, total_awaiting_decision }
-    Returns ALL pending signs not yet sent to the authority — the Flutter
-    Send-to-Authority screen lets the teacher pick which ones to send via checkboxes.
-    """
     pending_docs = list(
         submissions.find(
             {"status": "pending", "notified_authority": False},
@@ -364,10 +400,6 @@ def pending_batch():
 
 @teacher_bp.route("/api/teacher/send-to-authority", methods=["POST"])
 def send_to_authority():
-    """
-    Request : { "authority_email": "...", "submission_ids": ["<id1>", "<id2>", ...] }
-    Sends only the specific selected signs, not an automatic fixed batch.
-    """
     try:
         data = request.json or {}
         authority_email = data.get("authority_email", "").strip()
@@ -375,7 +407,6 @@ def send_to_authority():
 
         if not authority_email or "@" not in authority_email:
             return jsonify({"error": "Please provide a valid email address."}), 400
-
         if not submission_ids:
             return jsonify({"error": "Please select at least one sign to send."}), 400
 
@@ -500,6 +531,7 @@ def reject_submission(submission_id):
 
 # ================================================
 # Simple web page for the Authority to review signs
+# NEW: shows a motion-duplicate warning banner when DTW flagged similarity
 # ================================================
 AUTHORITY_PAGE_TEMPLATE = """
 <!DOCTYPE html>
@@ -525,6 +557,9 @@ AUTHORITY_PAGE_TEMPLATE = """
   .play-controls { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
   .play-btn { background:#00B4D8; color:#fff; padding:8px 14px; font-size:13px; margin:0; }
   .frame-label { color:#ffffff77; font-size:12px; }
+  .warning-banner { background:#FFB70322; border:1px solid #FFB703; border-radius:10px; padding:12px 14px; margin-bottom:14px; }
+  .warning-title { color:#FFB703; font-weight:700; font-size:13px; margin-bottom:6px; }
+  .warning-item { color:#ffffffcc; font-size:12px; }
 </style>
 </head>
 <body>
@@ -540,6 +575,15 @@ AUTHORITY_PAGE_TEMPLATE = """
   <div class="word">{{ s.english_word }} <span class="cat">({{ s.category }})</span></div>
   <div class="sinhala">{{ s.sinhala_word }}</div>
   <div class="meta">Submitted by: {{ s.teacher_id }}</div>
+
+  {% if s.motion_duplicate_warning %}
+  <div class="warning-banner">
+    <div class="warning-title">⚠️ Possible motion duplicate detected</div>
+    {% for m in s.similar_signs %}
+    <div class="warning-item">Similar to "{{ m.label }}" (DTW distance: {{ m.distance }})</div>
+    {% endfor %}
+  </div>
+  {% endif %}
 
   <div class="skeleton-box">
     <canvas id="canvas-{{ s._id }}" width="400" height="220"></canvas>
